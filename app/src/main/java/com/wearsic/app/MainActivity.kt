@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
-import androidx.wear.compose.foundation.rememberAmbientModeManager
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
@@ -27,7 +26,6 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun WearAppNavigation() {
-    rememberAmbientModeManager()
     val navController = rememberSwipeDismissableNavController()
     val context = LocalContext.current
 

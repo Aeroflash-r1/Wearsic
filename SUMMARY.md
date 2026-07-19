@@ -3,8 +3,8 @@
 ## Known Rough Edges & Unverified Assumptions
 
 ### 1. Ambient Mode (`LocalAmbientModeManager`)
-- **Status:** Resolved. `rememberAmbientModeManager()` is now called at the top of `WearAppNavigation()` in `MainActivity.kt`, so the `LocalAmbientModeManager` composition local is properly set up. The `PlayerScreen` uses a safe-call (`?.`) as a fallback.
-- The dimmed ambient state should now trigger correctly on actual ambient transitions on a real device.
+- **Status:** Degraded gracefully. `rememberAmbientModeManager()` was removed because it crashes on devices without ambient controller support. `PlayerScreen` always shows the full interactive UI. The ambient path (`AmbientPlayerContent`) is kept in the source and will activate if `LocalAmbientModeManager.current` is ever non-null, but in practice it will not trigger without re-adding the ambient support setup.
+- To re-enable: call `rememberAmbientModeManager()` at the composable root after ensuring the device supports Wear OS ambient mode.
 
 ### 2. Rotary Input (crown/bezel scrolling)
 - **Status:** Improved. `LaunchedEffect(tracks)` now requests focus whenever the track list changes, so focus returns to the `ScalingLazyColumn` after each new search or result update. The column also has initial focus on first launch. Minor temporary focus loss to buttons is acceptable — the next search re-grants focus.
@@ -32,6 +32,11 @@
 
 ### 9. GitHub Actions Artifact
 - Renamed to `wearsic-debug-apk-${{ github.run_number }}-${{ github.run_attempt }}` to prevent overwrites.
+
+### Retrofit Base URL Trailing Slash
+- Retrofit's `baseUrl()` throws `IllegalArgumentException` if the URL does not end with `/`. All default URLs (`WearsicApplication`, `SettingsDataStore`) now include a trailing `/`.
+- `WearsicApi.create()` normalizes any input URL by appending `/` if missing.
+- The `SettingsScreen` also normalizes the URL before saving.
 
 ## Build Status
 `./gradlew assembleDebug` — **BUILD SUCCESSFUL** (37 actionable tasks, zero errors, zero warnings from project code)

@@ -83,8 +83,9 @@ fun SettingsScreen(
 
         Button(
             onClick = {
-                viewModel.setBackendUrl(editedUrl)
-                app.updateRepository(editedUrl)
+                val normalized = if (editedUrl.endsWith("/")) editedUrl else "$editedUrl/"
+                viewModel.setBackendUrl(normalized)
+                app.updateRepository(normalized)
                 onSaved()
             },
             modifier = Modifier.fillMaxWidth(),

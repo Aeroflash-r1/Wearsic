@@ -15,7 +15,7 @@ class SettingsDataStore(private val context: Context) {
 
     companion object {
         private val BACKEND_URL_KEY = stringPreferencesKey("backend_url")
-        private const val DEFAULT_BACKEND_URL = "http://localhost:8080"
+        private const val DEFAULT_BACKEND_URL = "http://localhost:8080/"
     }
 
     val backendUrl: Flow<String> = context.dataStore.data.map { preferences ->

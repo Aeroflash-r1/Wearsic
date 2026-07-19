@@ -26,6 +26,7 @@ interface WearsicApi {
 
     companion object {
         fun create(baseUrl: String): WearsicApi {
+            val normalizedUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
             val okHttpClient = OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(10, TimeUnit.SECONDS)
@@ -34,7 +35,7 @@ interface WearsicApi {
             val json = Json { ignoreUnknownKeys = true }
 
             return Retrofit.Builder()
-                .baseUrl(baseUrl)
+                .baseUrl(normalizedUrl)
                 .client(okHttpClient)
                 .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
                 .build()

@@ -10,7 +10,7 @@ class WearsicApplication : Application() {
 
     val settingsDataStore by lazy { SettingsDataStore(this) }
 
-    var repository: WearsicRepository = createRepository("http://localhost:8080")
+    var repository: WearsicRepository = createRepository("http://localhost:8080/")
         private set
 
     val playbackManager: PlaybackManager by lazy {
