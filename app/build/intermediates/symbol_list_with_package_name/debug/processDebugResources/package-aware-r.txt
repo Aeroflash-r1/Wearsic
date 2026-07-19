@@ -1,15 +1,22 @@
 com.wearsic.app
+attr action
 attr activityAction
 attr activityName
 attr alpha
 attr alwaysExpand
 attr animationBackgroundColor
+attr argType
 attr clearTop
+attr data
+attr dataPattern
+attr destination
 attr dragRangeMaxRatio
 attr dragRangeMinRatio
 attr embeddingDividerColor
 attr embeddingDividerType
 attr embeddingDividerWidthDp
+attr enterAnim
+attr exitAnim
 attr finishPrimaryWithPlaceholder
 attr finishPrimaryWithSecondary
 attr finishSecondaryWithPrimary
@@ -25,12 +32,24 @@ attr fontProviderSystemFontFamily
 attr fontStyle
 attr fontVariationSettings
 attr fontWeight
+attr graph
 attr isDraggingToFullscreenAllowed
 attr lStar
+attr launchSingleTop
+attr mimeType
+attr navGraph
 attr nestedScrollViewStyle
+attr nullable
 attr placeholderActivityName
+attr popEnterAnim
+attr popExitAnim
+attr popUpTo
+attr popUpToInclusive
+attr popUpToSaveState
 attr primaryActivityName
 attr queryPatterns
+attr restoreState
+attr route
 attr secondaryActivityAction
 attr secondaryActivityName
 attr shortcutMatchRequired
@@ -44,9 +63,12 @@ attr splitMinSmallestWidthDp
 attr splitMinWidthDp
 attr splitOpenAnimation
 attr splitRatio
+attr startDestination
 attr stickyPlaceholder
 attr tag
+attr targetPackage
 attr ttcIndex
+attr uri
 color androidx_core_ripple_material_light
 color androidx_core_secondary_text_default_material_light
 color call_notification_answer_color
@@ -80,6 +102,8 @@ dimen notification_small_icon_size_as_large
 dimen notification_subtext_size
 dimen notification_top_pad
 dimen notification_top_pad_large_text
+drawable circular_vignette_bottom
+drawable circular_vignette_top
 drawable ic_call_answer
 drawable ic_call_answer_low
 drawable ic_call_answer_video
@@ -175,6 +199,8 @@ drawable notification_template_icon_bg
 drawable notification_template_icon_low_bg
 drawable notification_tile_bg
 drawable notify_panel_notification_icon_bg
+drawable rectangular_vignette_bottom
+drawable rectangular_vignette_top
 drawable wear_m3c_check_animation
 drawable wear_m3c_error
 drawable wear_m3c_failure_animation
@@ -258,6 +284,7 @@ id locale
 id ltr
 id media_actions
 id media_controller_compat_view_tag
+id nav_controller_view_tag
 id never
 id normal
 id notification_background
@@ -508,6 +535,7 @@ style TextAppearance_Compat_Notification_Title_Media
 style Widget_Compat_NotificationActionContainer
 style Widget_Compat_NotificationActionText
 styleable ActivityFilter activityAction activityName
+styleable ActivityNavigator android_name action data dataPattern targetPackage
 styleable ActivityRule alwaysExpand tag
 styleable Capability queryPatterns shortcutMatchRequired
 styleable ColorStateListItem android_color android_alpha android_lStar alpha lStar
@@ -517,6 +545,13 @@ styleable FontFamilyFont android_font android_fontWeight android_fontStyle andro
 styleable FontFamilyProviderFallback fontProviderQuery fontProviderSystemFontFamily fontVariationSettings
 styleable GradientColor android_startColor android_endColor android_type android_centerX android_centerY android_gradientRadius android_tileMode android_centerColor android_startX android_startY android_endX android_endY
 styleable GradientColorItem android_color android_offset
+styleable NavAction android_id destination enterAnim exitAnim launchSingleTop popEnterAnim popExitAnim popUpTo popUpToInclusive popUpToSaveState restoreState
+styleable NavArgument android_name android_defaultValue argType nullable
+styleable NavDeepLink android_autoVerify action mimeType uri
+styleable NavGraphNavigator startDestination
+styleable NavHost navGraph
+styleable NavInclude graph
+styleable Navigator android_label android_id route
 styleable SplitPairFilter primaryActivityName secondaryActivityAction secondaryActivityName
 styleable SplitPairRule animationBackgroundColor clearTop finishPrimaryWithSecondary finishSecondaryWithPrimary splitChangeAnimation splitCloseAnimation splitLayoutDirection splitMaxAspectRatioInLandscape splitMaxAspectRatioInPortrait splitMinHeightDp splitMinSmallestWidthDp splitMinWidthDp splitOpenAnimation splitRatio tag
 styleable SplitPlaceholderRule animationBackgroundColor finishPrimaryWithPlaceholder placeholderActivityName splitChangeAnimation splitCloseAnimation splitLayoutDirection splitMaxAspectRatioInLandscape splitMaxAspectRatioInPortrait splitMinHeightDp splitMinSmallestWidthDp splitMinWidthDp splitOpenAnimation splitRatio stickyPlaceholder tag

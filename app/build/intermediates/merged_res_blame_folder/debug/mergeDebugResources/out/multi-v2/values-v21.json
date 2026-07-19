@@ -1,10 +1,10 @@
 {
     "logs": [
         {
-            "outputFile": "com.wearsic.app-mergeDebugResources-48:/values-v21/values-v21.xml",
+            "outputFile": "com.wearsic.app-mergeDebugResources-55:/values-v21/values-v21.xml",
             "map": [
                 {
-                    "source": "/home/vscode/.gradle/caches/8.13/transforms/3bd4712ee10eeeb46f674cca5fd187a0/transformed/media3-session-1.10.1/res/values-v21/values-v21.xml",
+                    "source": "/home/vscode/.gradle/caches/8.13/transforms/ba8325878ca3d80c08db46b4dc8b16bf/transformed/media3-session-1.10.1/res/values-v21/values-v21.xml",
                     "from": {
                         "startLines": "2,5,8,11",
                         "startColumns": "4,4,4,4",
