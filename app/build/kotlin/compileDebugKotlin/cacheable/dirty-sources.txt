@@ -1,0 +1,14 @@
+/workspaces/Wearsic/app/src/main/java/com/wearsic/app/MainActivity.kt
+/workspaces/Wearsic/app/src/main/java/com/wearsic/app/data/model/Track.kt
+/workspaces/Wearsic/app/src/main/java/com/wearsic/app/playback/MediaNotificationBuilder.kt
+/workspaces/Wearsic/app/src/main/java/com/wearsic/app/viewmodel/SearchViewModel.kt
+/workspaces/Wearsic/app/src/main/java/com/wearsic/app/data/repository/WearsicRepository.kt
+/workspaces/Wearsic/app/src/main/java/com/wearsic/app/data/model/StreamInfo.kt
+/workspaces/Wearsic/app/src/main/java/com/wearsic/app/data/api/WearsicApi.kt
+/workspaces/Wearsic/app/src/main/java/com/wearsic/app/WearsicApplication.kt
+/workspaces/Wearsic/app/src/main/java/com/wearsic/app/playback/PlaybackService.kt
+/workspaces/Wearsic/app/src/main/java/com/wearsic/app/Theme.kt
+/workspaces/Wearsic/app/src/main/java/com/wearsic/app/data/model/SearchResponse.kt
+/workspaces/Wearsic/app/src/main/java/com/wearsic/app/playback/PlaybackState.kt
+/workspaces/Wearsic/app/src/main/java/com/wearsic/app/playback/PlaybackManager.kt
+/workspaces/Wearsic/app/src/main/java/com/wearsic/app/data/local/SettingsDataStore.kt
