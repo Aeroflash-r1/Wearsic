@@ -58,12 +58,12 @@ fun SearchScreen(
     onNavigateToSettings: () -> Unit,
 ) {
     val context = LocalContext.current
-    val factory = remember(context) {
-        val app = context.applicationContext as WearsicApplication
+    val app = context.applicationContext as WearsicApplication
+    val factory = remember {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return SearchViewModel(app.repository) as T
+                return SearchViewModel { app.repository } as T
             }
         }
     }
@@ -215,7 +215,7 @@ private fun TrackList(
     val listState = rememberScalingLazyListState()
     val focusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(tracks) {
         focusRequester.requestFocus()
     }
 

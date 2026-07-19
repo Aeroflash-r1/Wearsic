@@ -3,13 +3,11 @@
 ## Known Rough Edges & Unverified Assumptions
 
 ### 1. Ambient Mode (`LocalAmbientModeManager`)
-- **Status:** Wired but depends on runtime availability.
-- The `LocalAmbientModeManager` composition local may return `null` if `rememberAmbientModeManager()` hasn't been called in the composition tree. The `PlayerScreen` handles this via safe-call (`?.`). If the local is null, `isAmbient` defaults to `false` (interactive mode), so the screen always shows the full UI.
-- If you want ambient mode to actually trigger on a real device, verify that `rememberAmbientModeManager()` is called at the top of your composable tree (e.g., in `WearAppNavigation()`). Currently it is *not* called — ambient detection relies on the default composition-local value. This is safe (no crash) but may not enter the dimmed state on actual ambient transitions.
+- **Status:** Resolved. `rememberAmbientModeManager()` is now called at the top of `WearAppNavigation()` in `MainActivity.kt`, so the `LocalAmbientModeManager` composition local is properly set up. The `PlayerScreen` uses a safe-call (`?.`) as a fallback.
+- The dimmed ambient state should now trigger correctly on actual ambient transitions on a real device.
 
 ### 2. Rotary Input (crown/bezel scrolling)
-- **Status:** `FocusRequester` is wired on `ScalingLazyColumn`. Rotary input works when the list has focus.
-- On first launch, the `LaunchedEffect(Unit)` requests focus immediately, which should work. However, if other elements (e.g., the search button in a `Row` above) consume focus, the column may lose rotary focus. This is acceptable for a v1 — the user can re-tap the list or it auto-focuses on new results.
+- **Status:** Improved. `LaunchedEffect(tracks)` now requests focus whenever the track list changes, so focus returns to the `ScalingLazyColumn` after each new search or result update. The column also has initial focus on first launch. Minor temporary focus loss to buttons is acceptable — the next search re-grants focus.
 
 ### 3. Playback Service Self-Stop
 - **Status:** A 500ms debounced observer stops the service when `playbackState` becomes `Idle`. This is intended to prevent phantom foreground service.
@@ -17,9 +15,7 @@
 - The service no longer calls `player.release()` in `onDestroy()` (the player is owned by `PlaybackManager`). If the service is killed and restarted, a new `MediaSession` wraps the same player instance.
 
 ### 4. Dynamic Backend URL
-- **Status:** `SettingsScreen` saves to DataStore and calls `app.updateRepository()`, which recreates the API client and updates the `PlaybackManager`'s repository reference.
-- The `SearchViewModel` factory captures `app.repository` at composition time. If the URL is changed while the SearchScreen is alive, the ViewModel still holds the old repository reference. The next search will still use the old URL until the screen is recomposed or the ViewModel is recreated.
-- Workaround: Navigate away and back, or trigger a recomposition. A full fix would require making the ViewModel observe repository changes, which is more complex than warranted for this project.
+- **Status:** Resolved. `SearchViewModel` now accepts a `repositoryProvider: () -> WearsicRepository` lambda instead of a cached instance. Every `search()` call invokes the provider, which reads the current `app.repository`. Changing the URL in Settings and saving immediately updates the repository; the next search uses the new URL with no navigation or recomposition required.
 
 ### 5. No TODO Comments Found
 - There are no `// TODO:`, `// FIXME:`, or `// HACK:` comments anywhere in the codebase (searched all `.kt`, `.kts`, `.xml`, `.yml` files).

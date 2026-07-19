@@ -19,7 +19,7 @@ sealed interface SearchUiState {
 }
 
 class SearchViewModel(
-    private val repository: WearsicRepository,
+    private val repositoryProvider: () -> WearsicRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Loading)
@@ -28,7 +28,7 @@ class SearchViewModel(
     fun search(query: String) {
         viewModelScope.launch {
             _uiState.value = SearchUiState.Loading
-            val result = repository.search(query)
+            val result = repositoryProvider().search(query)
             _uiState.value = result.fold(
                 onSuccess = { SearchUiState.Success(it) },
                 onFailure = { e ->
