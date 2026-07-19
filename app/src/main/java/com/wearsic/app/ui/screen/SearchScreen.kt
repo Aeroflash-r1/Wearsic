@@ -15,9 +15,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,6 +55,7 @@ import com.wearsic.app.viewmodel.SearchViewModel
 @Composable
 fun SearchScreen(
     onTrackSelected: (track: Track, allTracks: List<Track>) -> Unit,
+    onNavigateToSettings: () -> Unit,
 ) {
     val context = LocalContext.current
     val factory = remember(context) {
@@ -124,6 +127,15 @@ fun SearchScreen(
                     Text("X", style = MaterialTheme.typography.labelSmall)
                 }
             }
+            IconButton(
+                onClick = onNavigateToSettings,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Settings,
+                    contentDescription = "Settings",
+                    modifier = Modifier.size(24.dp),
+                )
+            }
         }
 
         if (query.isNotBlank()) {
@@ -179,8 +191,14 @@ fun SearchScreen(
                             textAlign = TextAlign.Center,
                         )
                         Spacer(Modifier.height(8.dp))
-                        Button(onClick = { if (query.isNotBlank()) viewModel.search(query) }) {
+                        Button(onClick = {
+                            if (query.isNotBlank()) viewModel.search(query)
+                        }) {
                             Text("Retry")
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Button(onClick = onNavigateToSettings) {
+                            Text("Settings")
                         }
                     }
                 }

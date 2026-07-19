@@ -21,13 +21,16 @@ import kotlinx.coroutines.launch
 
 class PlaybackManager(
     private val appContext: Context,
-    private val repository: WearsicRepository,
+    repository: WearsicRepository,
 ) {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     val player: ExoPlayer = ExoPlayer.Builder(appContext)
         .setWakeMode(C.WAKE_MODE_LOCAL)
         .build()
+
+    var repository: WearsicRepository = repository
+        private set
 
     private val _playbackState = MutableStateFlow<PlaybackState>(PlaybackState.Idle)
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
@@ -52,17 +55,15 @@ class PlaybackManager(
         player.addListener(
             object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
-                    _playbackState.value = when (playbackState) {
-                        Player.STATE_IDLE -> PlaybackState.Idle
-                        Player.STATE_BUFFERING -> PlaybackState.Buffering
+                    when (playbackState) {
+                        Player.STATE_IDLE -> _playbackState.value = PlaybackState.Idle
+                        Player.STATE_BUFFERING -> _playbackState.value = PlaybackState.Buffering
                         Player.STATE_READY -> {
-                            if (player.playWhenReady) PlaybackState.Playing else PlaybackState.Paused
+                            _playbackState.value = if (player.playWhenReady) PlaybackState.Playing else PlaybackState.Paused
                         }
                         Player.STATE_ENDED -> {
                             autoAdvanceNext()
-                            PlaybackState.Idle
                         }
-                        else -> PlaybackState.Idle
                     }
                 }
 
@@ -78,6 +79,10 @@ class PlaybackManager(
                 }
             },
         )
+    }
+
+    fun updateRepository(repository: WearsicRepository) {
+        this.repository = repository
     }
 
     fun setQueue(tracks: List<Track>, startIndex: Int) {

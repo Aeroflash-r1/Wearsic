@@ -110,6 +110,8 @@ drawable ic_call_answer_video
 drawable ic_call_answer_video_low
 drawable ic_call_decline
 drawable ic_call_decline_low
+drawable ic_launcher_background
+drawable ic_launcher_foreground
 drawable media3_icon_album
 drawable media3_icon_artist
 drawable media3_icon_block
@@ -364,6 +366,7 @@ layout notification_template_media
 layout notification_template_media_custom
 layout notification_template_part_chronometer
 layout notification_template_part_time
+mipmap ic_launcher
 plurals wear_m3c_time_picker_hours_content_description
 plurals wear_m3c_time_picker_minutes_content_description
 plurals wear_m3c_time_picker_seconds_content_description

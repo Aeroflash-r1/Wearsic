@@ -8,6 +8,12 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.wearsic.app.MainActivity
 import com.wearsic.app.WearsicApplication
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 class PlaybackService : MediaSessionService() {
 
@@ -15,6 +21,7 @@ class PlaybackService : MediaSessionService() {
         get() = (application as WearsicApplication).playbackManager
 
     private var mediaSession: MediaSession? = null
+    private var stateObserver: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -23,6 +30,17 @@ class PlaybackService : MediaSessionService() {
         mediaSession = MediaSession.Builder(this, manager.player)
             .setSessionActivity(sessionActivityPendingIntent)
             .build()
+
+        stateObserver = CoroutineScope(Dispatchers.Main).launch {
+            manager.playbackState.collect { state ->
+                if (state == PlaybackState.Idle) {
+                    delay(500L)
+                    if (manager.playbackState.value == PlaybackState.Idle) {
+                        stopSelf()
+                    }
+                }
+            }
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
@@ -37,8 +55,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        stateObserver?.cancel()
         mediaSession?.run {
-            player.release()
             release()
             mediaSession = null
         }
