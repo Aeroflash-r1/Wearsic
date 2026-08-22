@@ -43,7 +43,7 @@ class WearsicDownloadRepository(
         return getDownloadedTrack(trackId) != null
     }
 
-    suspend fun recordQueued(track: Track, localFilePath: String) {
+    suspend fun recordQueued(track: Track, localFilePath: String, autoCached: Boolean = false) {
         val entity = WearsicDownloadEntity(
             trackId = track.id,
             title = track.title,
@@ -56,9 +56,14 @@ class WearsicDownloadRepository(
             downloadState = DownloadState.QUEUED.name,
             progress = 0,
             fileSizeBytes = 0L,
-            errorMessage = null
+            errorMessage = null,
+            autoCached = autoCached
         )
         downloadDao.insertOrUpdate(entity)
+    }
+
+    suspend fun getAutoCachedCompleted(): List<WearsicDownloadEntity> {
+        return downloadDao.getAutoCachedCompleted()
     }
 
     suspend fun updateProgress(trackId: String, progress: Int, sizeBytes: Long) {

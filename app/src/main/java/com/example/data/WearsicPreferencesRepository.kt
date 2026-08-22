@@ -21,8 +21,8 @@ class WearsicPreferencesRepository(private val context: Context) {
     companion object {
         val KEY_SERVER_URL = stringPreferencesKey("server_url")
         val KEY_CACHE_LIMIT = intPreferencesKey("cache_limit_mb")
-        const val DEFAULT_SERVER_URL = ""
-        const val DEFAULT_CACHE_LIMIT = 128
+        const val DEFAULT_SERVER_URL = "https://tailscale-termux.tail702ad8.ts.net"
+        const val DEFAULT_CACHE_LIMIT = 32
     }
 
     val serverUrlFlow: Flow<String> = context.dataStore.data

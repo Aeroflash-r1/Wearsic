@@ -274,7 +274,7 @@ private fun DownloadedTrackItemCard(
                     AsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(entity.artworkUrl)
-                            .crossfade(true)
+                            .size(120)
                             .build(),
                         contentDescription = entity.title,
                         contentScale = ContentScale.Crop,

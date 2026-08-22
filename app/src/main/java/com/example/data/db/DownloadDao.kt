@@ -15,6 +15,9 @@ interface DownloadDao {
     @Query("SELECT * FROM downloads WHERE downloadState = 'COMPLETED' ORDER BY createdAt DESC")
     fun getCompletedDownloadsFlow(): Flow<List<WearsicDownloadEntity>>
 
+    @Query("SELECT * FROM downloads WHERE downloadState = 'COMPLETED' AND autoCached = 1 ORDER BY createdAt DESC")
+    suspend fun getAutoCachedCompleted(): List<WearsicDownloadEntity>
+
     @Query("SELECT * FROM downloads WHERE trackId = :trackId LIMIT 1")
     fun getDownloadFlowById(trackId: String): Flow<WearsicDownloadEntity?>
 

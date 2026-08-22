@@ -1,10 +1,12 @@
 package com.example.data
 
 import android.content.Context
+import com.example.model.Playlist
 import com.example.model.Track
 import com.example.network.WearsicApiClient
 import com.example.network.WearsicHttpApiClient
 import com.example.network.model.ConnectionTestState
+import com.example.network.model.TrackDto
 import kotlinx.coroutines.flow.first
 
 class WearsicMusicRepository(
@@ -53,5 +55,46 @@ class WearsicMusicRepository(
 
         val exception = httpResult.exceptionOrNull() ?: Exception("No tracks found on server")
         return Result.failure(exception)
+    }
+
+    suspend fun getFavorites(): Result<List<Track>> {
+        val currentUrl = getServerUrl()
+        val httpResult = httpApiClient.getFavorites(currentUrl)
+        return httpResult.map { dtoList -> dtoList.map { it.toDomainTrack() } }
+    }
+
+    suspend fun addFavorite(track: Track): Result<Unit> {
+        val currentUrl = getServerUrl()
+        val dto = TrackDto(
+            id = track.id,
+            title = track.title,
+            artist = track.artist,
+            album = null,
+            artworkUrl = track.artworkUrl,
+            durationMs = track.durationMs,
+            streamUrl = track.mediaUri
+        )
+        return httpApiClient.addFavorite(currentUrl, dto)
+    }
+
+    suspend fun removeFavorite(trackId: String): Result<Unit> {
+        val currentUrl = getServerUrl()
+        return httpApiClient.removeFavorite(currentUrl, trackId)
+    }
+
+    suspend fun getPlaylists(): Result<List<Playlist>> {
+        val currentUrl = getServerUrl()
+        return httpApiClient.getPlaylists(currentUrl).map { dtoList -> dtoList.map { it.toDomainPlaylist() } }
+    }
+
+    suspend fun getPlaylistTracks(playlistId: String): Result<List<Track>> {
+        val currentUrl = getServerUrl()
+        return httpApiClient.getPlaylistTracks(currentUrl, playlistId)
+            .map { dto -> dto.tracks.map { it.toDomainTrack() } }
+    }
+
+    suspend fun removeTrackFromPlaylist(playlistId: String, trackId: String): Result<Unit> {
+        val currentUrl = getServerUrl()
+        return httpApiClient.removeTrackFromPlaylist(currentUrl, playlistId, trackId)
     }
 }

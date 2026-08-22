@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,7 +31,6 @@ import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.Text
 import com.example.ui.theme.WearsicBlack
 import com.example.ui.theme.WearsicSurface
-import com.example.ui.theme.WearsicSurfaceActive
 import com.example.ui.theme.WearsicSurfaceBorder
 import com.example.ui.theme.WearsicSurfaceBorderSubtle
 import com.example.ui.theme.WearsicTextMuted

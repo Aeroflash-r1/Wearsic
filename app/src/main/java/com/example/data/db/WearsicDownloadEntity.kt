@@ -1,5 +1,6 @@
 package com.example.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.example.model.Track
@@ -27,8 +28,10 @@ data class WearsicDownloadEntity(
     val progress: Int = 0, // 0..100
     val fileSizeBytes: Long = 0L,
     val errorMessage: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
-) {
+    val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0")
+    val autoCached: Boolean = false
+    ) {
     fun toDomainTrack(): Track {
         return Track(
             id = trackId,

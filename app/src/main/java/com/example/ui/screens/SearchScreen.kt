@@ -26,8 +26,8 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +42,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -61,7 +62,6 @@ import coil.request.ImageRequest
 import com.example.model.Track
 import com.example.ui.components.WearsicScreenHeader
 import com.example.ui.theme.WearsicBlack
-import com.example.ui.theme.WearsicError
 import com.example.ui.theme.WearsicLavenderContainer
 import com.example.ui.theme.WearsicSurface
 import com.example.ui.theme.WearsicSurfaceActive
@@ -82,11 +82,24 @@ fun SearchScreen(
     onQuerySelected: (String) -> Unit,
     onTrackSelected: (Track) -> Unit,
     onDownloadTrack: (Track) -> Unit = {},
+    onAddToQueue: (Track) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val listState = rememberScalingLazyListState()
+    val keyboardController = LocalSoftwareKeyboardController.current
     val quickQueries = listOf("Crowded House", "Rock", "Pop", "Acoustic")
     var typedQuery by remember(searchState.query) { mutableStateOf(searchState.query) }
+
+    // Wear keyboards are inconsistent: the enter key may fire onSearch, onDone
+    // or onGo depending on the active IME. Handle all of them and dismiss the
+    // keyboard so the results become visible immediately.
+    fun submitSearch() {
+        val query = typedQuery.trim()
+        if (query.isNotBlank()) {
+            keyboardController?.hide()
+            onQuerySelected(query)
+        }
+    }
 
     ScreenScaffold(
         scrollState = listState,
@@ -168,11 +181,9 @@ fun SearchScreen(
                                     imeAction = ImeAction.Search
                                 ),
                                 keyboardActions = KeyboardActions(
-                                    onSearch = {
-                                        if (typedQuery.isNotBlank()) {
-                                            onQuerySelected(typedQuery)
-                                        }
-                                    }
+                                    onSearch = { submitSearch() },
+                                    onDone = { submitSearch() },
+                                    onGo = { submitSearch() }
                                 ),
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -265,43 +276,15 @@ fun SearchScreen(
                 }
             }
 
-            // Error State
-            if (searchState.errorMessage != null && !searchState.isSearching) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(CircleShape)
-                            .background(WearsicSurface)
-                            .border(1.dp, WearsicError.copy(alpha = 0.5f), CircleShape)
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Rounded.Warning,
-                                contentDescription = "Error",
-                                tint = WearsicError,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = searchState.errorMessage,
-                                color = WearsicError,
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                }
-            }
-
             // Empty State
-            if (searchState.hasSearched && searchState.results.isEmpty() && !searchState.isSearching && searchState.errorMessage == null) {
+            if (searchState.hasSearched && searchState.results.isEmpty() && !searchState.isSearching) {
                 item {
                     Text(
-                        text = "No tracks found for \"${searchState.query}\"",
+                        text = if (searchState.errorMessage != null) {
+                            "No results found"
+                        } else {
+                            "No tracks found for \"${searchState.query}\""
+                        },
                         color = WearsicTextMuted,
                         fontSize = 11.sp,
                         textAlign = TextAlign.Center,
@@ -311,11 +294,12 @@ fun SearchScreen(
             }
 
             // Result Items
-            items(searchState.results) { track ->
+            items(searchState.results, key = { it.id }) { track ->
                 SearchTrackItem(
                     track = track,
                     onClick = { onTrackSelected(track) },
-                    onDownload = { onDownloadTrack(track) }
+                    onDownload = { onDownloadTrack(track) },
+                    onAddToQueue = { onAddToQueue(track) }
                 )
             }
 
@@ -364,6 +348,7 @@ private fun SearchTrackItem(
     track: Track,
     onClick: () -> Unit,
     onDownload: () -> Unit = {},
+    onAddToQueue: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -391,7 +376,7 @@ private fun SearchTrackItem(
                     AsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(track.artworkUrl)
-                            .crossfade(true)
+                            .size(120)
                             .build(),
                         contentDescription = track.title,
                         contentScale = ContentScale.Crop,
@@ -438,6 +423,27 @@ private fun SearchTrackItem(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // Add to Queue button
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(WearsicSurface)
+                        .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
+                        .clickable(onClick = onAddToQueue)
+                        .testTag("search_add_to_queue_${track.id}"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.QueueMusic,
+                        contentDescription = "Add to Queue",
+                        tint = WearsicTextMuted,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
                 // Download button
                 Box(
                     modifier = Modifier

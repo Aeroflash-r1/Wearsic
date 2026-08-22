@@ -40,8 +40,6 @@ class WearsicMediaService : MediaSessionService() {
             .setMediaSourceFactory(mediaSourceFactory)
             .build()
 
-        exoPlayer.prepare()
-
         this.player = exoPlayer
 
         // 5. Create Session Activity Intent for Now Playing / System media controls
@@ -63,10 +61,26 @@ class WearsicMediaService : MediaSessionService() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        val player = mediaSession?.player
-        if (player == null || !player.playWhenReady || player.mediaItemCount == 0) {
+        val session = mediaSession
+        if (session == null) {
             stopSelf()
+            super.onTaskRemoved(rootIntent)
+            return
         }
+
+        // Swiping the app away from recents ends playback and tears the service
+        // down cleanly: pause, release the player and session (which also
+        // removes the media notification and the foreground state), then stop.
+        val activePlayer = session.player
+        if (activePlayer.isPlaying) {
+            activePlayer.pause()
+        }
+        activePlayer.stop()
+        activePlayer.release()
+        session.release()
+        mediaSession = null
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {

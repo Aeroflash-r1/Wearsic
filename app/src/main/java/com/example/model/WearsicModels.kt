@@ -11,6 +11,13 @@ data class Track(
     val isFavorite: Boolean = false
 )
 
+data class Playlist(
+    val id: String = "",
+    val name: String = "",
+    val trackCount: Int = 0,
+    val thumbnailUrl: String? = null
+)
+
 data class PlaybackUiState(
     val currentTrack: Track = Track(),
     val isPlaying: Boolean = false,
@@ -24,13 +31,4 @@ data class PlaybackUiState(
     val hasPrevious: Boolean = false,
     val playlist: List<Track> = emptyList(),
     val currentTrackIndex: Int = 0
-)
-
-data class SettingsState(
-    val serverUrl: String = "",
-    val cacheLimitMb: Int = 128,
-    val currentCacheUsedMb: Int = 0,
-    val totalDownloadsCount: Int = 0,
-    val isCacheCleaned: Boolean = false,
-    val isDownloadsCleared: Boolean = false
 )

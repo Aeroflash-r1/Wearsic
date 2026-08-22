@@ -42,6 +42,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -56,6 +57,7 @@ import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import androidx.wear.tooling.preview.devices.WearDevices
 import androidx.compose.ui.tooling.preview.Preview
+import com.example.BuildConfig
 import com.example.network.model.ConnectionTestState
 import com.example.ui.components.WearsicScreenHeader
 import com.example.ui.theme.WearsicBlack
@@ -80,34 +82,31 @@ fun SettingsScreen(
     connectionTestState: ConnectionTestState = ConnectionTestState.Idle,
     onServerUrlChanged: (String) -> Unit = {},
     onTestConnection: (String) -> Unit = {},
-    cacheLimitMb: Int = 128,
+    cacheLimitMb: Int = 32,
     onCacheLimitChanged: (Int) -> Unit = {},
-    onCleanCache: () -> Long = { 0L },
+    onCleanCache: (onResult: (Long) -> Unit) -> Unit = { onResult -> onResult(0L) },
     onClearDownloads: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val serverPresets = listOf(
-        "https://10.0.2.2:8080",
-        "https://192.168.1.100:8080",
-        "https://server.local"
+        "http://10.0.2.2:8080",
+        "http://192.168.1.100:8080",
+        "https://tailscale-termux.tail702ad8.ts.net"
     )
 
-    var currentPresetIndex by remember {
-        val idx = serverPresets.indexOf(serverUrl)
-        mutableIntStateOf(if (idx >= 0) idx else 0)
-    }
-
-    val cacheLimits = listOf(64, 128, 256, 512)
+    val cacheLimits = listOf(16, 32, 64, 128)
     var currentCacheLimitIndex by remember {
         val idx = cacheLimits.indexOf(cacheLimitMb)
         mutableIntStateOf(if (idx >= 0) idx else 1)
     }
 
     var cacheCleanedMessage by remember { mutableStateOf<String?>(null) }
+    var isCleaningCache by remember { mutableStateOf(false) }
     var showClearDownloadsConfirm by remember { mutableStateOf(false) }
     var downloadsClearedMessage by remember { mutableStateOf<String?>(null) }
 
     val listState = rememberScalingLazyListState()
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     ScreenScaffold(
         scrollState = listState,
@@ -205,6 +204,7 @@ fun SettingsScreen(
                                     ),
                                     keyboardActions = KeyboardActions(
                                         onDone = {
+                                            keyboardController?.hide()
                                             onServerUrlChanged(typedUrl)
                                         }
                                     ),
@@ -253,12 +253,12 @@ fun SettingsScreen(
                             .background(WearsicSurface)
                             .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
                             .clickable {
-                                onServerUrlChanged("http://10.0.2.2:8080")
+                                onServerUrlChanged(serverPresets[0])
                             }
                             .padding(vertical = 6.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("Emulator", color = WearsicTextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Text("Emulator", color = WearsicTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
 
                     Box(
@@ -268,12 +268,27 @@ fun SettingsScreen(
                             .background(WearsicSurface)
                             .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
                             .clickable {
-                                onServerUrlChanged("http://192.168.1.100:8080")
+                                onServerUrlChanged(serverPresets[1])
                             }
                             .padding(vertical = 6.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("Local Lan", color = WearsicTextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Text("Local Lan", color = WearsicTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(CircleShape)
+                            .background(WearsicSurface)
+                            .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
+                            .clickable {
+                                onServerUrlChanged(serverPresets[2])
+                            }
+                            .padding(vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Cloud", color = WearsicTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -420,17 +435,31 @@ fun SettingsScreen(
             // Clean Music Cache Pill
             item {
                 SettingsPillItem(
-                    title = if (cacheCleanedMessage != null) cacheCleanedMessage!! else "Clean Music Cache",
-                    subtitle = if (cacheCleanedMessage != null) "Cache cleared (0 MB)" else "Wipe temp streaming cache",
+                    title = when {
+                        isCleaningCache -> "Cleaning Cache..."
+                        cacheCleanedMessage != null -> cacheCleanedMessage!!
+                        else -> "Clean Music Cache"
+                    },
+                    subtitle = when {
+                        isCleaningCache -> "Deleting temp streaming files"
+                        cacheCleanedMessage != null -> "Cache cleared"
+                        else -> "Wipe temp streaming cache"
+                    },
                     icon = Icons.Rounded.CleaningServices,
                     iconTint = if (cacheCleanedMessage != null) WearsicSuccess else WearsicVibrantLavender,
                     onClick = {
-                        val freedBytes = onCleanCache()
-                        val freedMb = freedBytes / (1024.0 * 1024.0)
-                        cacheCleanedMessage = if (freedMb > 0) {
-                            String.format("Cache Cleaned (Freed %.1fMB)", freedMb)
-                        } else {
-                            "Cache Cleaned (0 MB)"
+                        if (!isCleaningCache) {
+                            isCleaningCache = true
+                            cacheCleanedMessage = null
+                            onCleanCache { freedBytes ->
+                                val freedMb = freedBytes / (1024.0 * 1024.0)
+                                cacheCleanedMessage = if (freedMb > 0) {
+                                    String.format("Cache Cleaned (Freed %.1fMB)", freedMb)
+                                } else {
+                                    "Cache Cleaned (0 MB)"
+                                }
+                                isCleaningCache = false
+                            }
                         }
                     },
                     testTag = "settings_clean_cache"
@@ -485,7 +514,7 @@ fun SettingsScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "Wearsic v1.0 (Milestone 4)",
+                        text = "Wearsic v${BuildConfig.VERSION_NAME}",
                         color = WearsicTextMuted,
                         fontSize = 10.sp,
                         textAlign = TextAlign.Center

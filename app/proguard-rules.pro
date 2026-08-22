@@ -1,21 +1,22 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Wearsic — R8 / ProGuard rules (release builds)
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# DownloadState enum constants are persisted as strings in the Room database
+# (DownloadState.QUEUED.name, COMPLETED.name, ...). Their names must never be
+# obfuscated, otherwise downloads recorded by a previous build would no longer
+# match and the Downloads screen would misrender offline tracks.
+-keepclassmembers enum com.example.data.db.DownloadState { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Keep readable file/line info in release stack traces for crash reports.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# --- Library rules (should already be handled by consumer rules) ---
+# Room: KSP-generated *_Impl classes are instantiated reflectively.
+-keep class * extends androidx.room.RoomDatabase { <init>(); }
+
+# Media3 MediaSessionService is referenced via ComponentName in
+# WearsicPlaybackController and started from the manifest.
+-keep class com.example.media.WearsicMediaService { <init>(); }
+
+# Serialized/network models are mapped manually via org.json — no reflection,
+# so no keep rules required for com.example.model / com.example.network.model.

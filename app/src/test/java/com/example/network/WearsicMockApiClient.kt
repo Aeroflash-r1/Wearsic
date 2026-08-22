@@ -3,12 +3,16 @@ package com.example.network
 import android.content.ContentResolver
 import android.content.Context
 import com.example.R
+import com.example.network.model.PlaylistDto
+import com.example.network.model.PlaylistWithTracksDto
 import com.example.network.model.SearchResponseDto
 import com.example.network.model.ServerHealthDto
 import com.example.network.model.TrackDto
 import kotlinx.coroutines.delay
 
 class WearsicMockApiClient(private val context: Context) : WearsicApiClient {
+
+    private val favorites = mutableListOf<TrackDto>()
 
     override suspend fun checkHealth(baseUrl: String): Result<ServerHealthDto> {
         delay(400) // Simulate fast network roundtrip
@@ -93,5 +97,39 @@ class WearsicMockApiClient(private val context: Context) : WearsicApiClient {
         }
 
         return Result.success(SearchResponseDto(query = query, tracks = filtered))
+    }
+
+    override suspend fun getFavorites(baseUrl: String): Result<List<TrackDto>> {
+        delay(300)
+        return Result.success(favorites.toList())
+    }
+
+    override suspend fun addFavorite(baseUrl: String, track: TrackDto): Result<Unit> {
+        delay(300)
+        if (favorites.none { it.id == track.id }) {
+            favorites.add(track)
+        }
+        return Result.success(Unit)
+    }
+
+    override suspend fun removeFavorite(baseUrl: String, videoId: String): Result<Unit> {
+        delay(300)
+        favorites.removeAll { it.id == videoId }
+        return Result.success(Unit)
+    }
+
+    override suspend fun getPlaylists(baseUrl: String): Result<List<PlaylistDto>> {
+        delay(300)
+        return Result.success(emptyList())
+    }
+
+    override suspend fun getPlaylistTracks(baseUrl: String, playlistId: String): Result<PlaylistWithTracksDto> {
+        delay(300)
+        return Result.success(PlaylistWithTracksDto(id = playlistId, name = "Mock", tracks = emptyList()))
+    }
+
+    override suspend fun removeTrackFromPlaylist(baseUrl: String, playlistId: String, videoId: String): Result<Unit> {
+        delay(300)
+        return Result.success(Unit)
     }
 }
