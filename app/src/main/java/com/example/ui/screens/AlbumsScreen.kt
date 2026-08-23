@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -77,7 +78,18 @@ fun AlbumsScreen(
     modifier: Modifier = Modifier
 ) {
     val listState = rememberScalingLazyListState()
+    val keyboardController = LocalSoftwareKeyboardController.current
     var typed by remember(albumsState.query) { mutableStateOf(albumsState.query) }
+
+    // Wear keyboards fire different enter actions; handle all and dismiss so
+    // results appear immediately.
+    fun submitAlbumSearch() {
+        val q = typed.trim()
+        if (q.isNotBlank()) {
+            keyboardController?.hide()
+            onQueryChanged(q)
+        }
+    }
 
     ScreenScaffold(
         scrollState = listState,
@@ -130,7 +142,11 @@ fun AlbumsScreen(
                             textStyle = TextStyle(color = WearsicTextPrimary, fontSize = 12.sp),
                             cursorBrush = SolidColor(WearsicVibrantLavender),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                            keyboardActions = KeyboardActions(onSearch = { onQueryChanged(typed.trim()) }),
+                            keyboardActions = KeyboardActions(
+                                onSearch = { submitAlbumSearch() },
+                                onDone = { submitAlbumSearch() },
+                                onGo = { submitAlbumSearch() }
+                            ),
                             modifier = Modifier.fillMaxWidth()
                         )
                     }

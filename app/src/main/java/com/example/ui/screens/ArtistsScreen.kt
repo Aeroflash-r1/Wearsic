@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -84,16 +85,25 @@ fun ArtistsScreen(
                 if (selected == null) {
                     WearsicScreenHeader(title = "Artists", subtitle = "From your saved songs")
                 } else {
-                    WearsicScreenHeader(title = selected!!.name, subtitle = "${selected!!.songs.size} songs")
-                    Box(
+                    WearsicScreenHeader(title = selected!!.name, subtitle = "${selected!!.songs.size} songs • tap Clear to go back")
+                    // Clear button — exits the artist back to the full list
+                    Row(
                         modifier = Modifier
                             .clip(CircleShape)
                             .background(WearsicGlassFill)
                             .border(1.dp, WearsicGlassBorder, CircleShape)
                             .clickable { selected = null }
-                            .padding(horizontal = 12.dp, vertical = 5.dp)
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("← All artists", color = WearsicTextSecondary, fontSize = 10.sp)
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = "Clear artist",
+                            tint = WearsicTextSecondary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.size(6.dp))
+                        Text("Clear", color = WearsicTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }
