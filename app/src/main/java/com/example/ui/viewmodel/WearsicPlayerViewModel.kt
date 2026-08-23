@@ -12,17 +12,20 @@ import com.example.data.WearsicRecentRepository
 import com.example.data.db.WearsicDownloadEntity
 import com.example.media.WearsicPlaybackController
 import com.example.media.cache.WearsicPlaybackCacheManager
+import androidx.core.net.toUri
 import com.example.media.download.WearsicDownloadManager
 import com.example.model.PlaybackUiState
 import com.example.model.Playlist
 import com.example.model.Track
 import com.example.network.model.ConnectionTestState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -36,7 +39,8 @@ data class SearchUiState(
     val results: List<Track> = emptyList(),
     val isSearching: Boolean = false,
     val errorMessage: String? = null,
-    val hasSearched: Boolean = false
+    val hasSearched: Boolean = false,
+    val suggestions: List<String> = emptyList()
 )
 
 data class FavoritesUiState(
@@ -52,6 +56,36 @@ data class PlaylistsUiState(
     val errorMessage: String? = null
 )
 
+data class AlbumsUiState(
+    val query: String = "",
+    val albums: List<com.example.model.Album> = emptyList(),
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null
+)
+
+data class StorageStats(
+    val autoCount: Int = 0,
+    val autoMb: Double = 0.0,
+    val manualCount: Int = 0,
+    val manualMb: Double = 0.0,
+    val streamCacheMb: Double = 0.0
+)
+
+data class ArtistGroup(
+    val name: String,
+    val songs: List<Track>
+)
+
+data class ArtistsUiState(
+    val artists: List<ArtistGroup> = emptyList(),
+    val isLoading: Boolean = false
+)
+
+sealed interface RadioState {
+    data object Idle : RadioState
+    data object Loading : RadioState
+    data class Error(val message: String) : RadioState
+}
 data class PlaylistDetailUiState(
     val playlistId: String = "",
     val tracks: List<Track> = emptyList(),
@@ -87,6 +121,55 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
     val cacheLimitMb: StateFlow<Int> = preferencesRepository.cacheLimitFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), WearsicPreferencesRepository.DEFAULT_CACHE_LIMIT)
 
+    val apiKey: StateFlow<String> = preferencesRepository.apiKeyFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
+    /**
+     * SLEEP TIMER: pauses playback after [minutes], fading volume to zero over
+     * the final 10 seconds. minutes <= 0 cancels an active timer.
+     */
+    fun setSleepTimer(minutes: Int) {
+        sleepJob?.cancel()
+        playbackController.setVolumeScale(1f)
+        if (minutes <= 0) {
+            _sleepRemainingMs.value = 0L
+            return
+        }
+        val durationMs = minutes * 60_000L
+        val endsAt = System.currentTimeMillis() + durationMs
+        sleepJob = viewModelScope.launch {
+            var lastTick = System.nanoTime()
+            while (true) {
+                delay(250)
+                val now = System.currentTimeMillis()
+                val remaining = endsAt - now
+                _sleepRemainingMs.value = remaining.coerceAtLeast(0L)
+                if (remaining <= 10_000L) {
+                    // Fade over the final 10 seconds.
+                    val nowNano = System.nanoTime()
+                    val dtSec = ((nowNano - lastTick) / 1_000_000_000f).coerceIn(0.05f, 0.5f)
+                    lastTick = nowNano
+                    val step = dtSec / 10f
+                    val currentVol = 1f - ((10_000f - remaining.toFloat()) / 10_000f)
+                    playbackController.setVolumeScale((currentVol - step).coerceIn(0f, 1f))
+                }
+                if (remaining <= 0L) break
+            }
+            playbackController.pause()
+            playbackController.setVolumeScale(1f)
+            _sleepRemainingMs.value = 0L
+        }
+    }
+
+    fun setApiKey(key: String) {
+        viewModelScope.launch {
+            musicRepository.saveApiKey(key)
+        }
+    }
+
+    val autoCacheEnabled: StateFlow<Boolean> = preferencesRepository.autoCacheEnabledFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     private val _connectionTestState = MutableStateFlow<ConnectionTestState>(ConnectionTestState.Idle)
     val connectionTestState: StateFlow<ConnectionTestState> = _connectionTestState.asStateFlow()
 
@@ -104,6 +187,27 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
 
     private var searchJob: Job? = null
     private var detailJob: Job? = null
+    private var radioJob: Job? = null
+    private var suggestionsJob: Job? = null
+
+    private val _radioState = MutableStateFlow<RadioState>(RadioState.Idle)
+    val radioState: StateFlow<RadioState> = _radioState.asStateFlow()
+
+    private val _sleepRemainingMs = MutableStateFlow(0L)
+    val sleepRemainingMs: StateFlow<Long> = _sleepRemainingMs.asStateFlow()
+    private var sleepJob: Job? = null
+
+    private val _albumsState = MutableStateFlow(AlbumsUiState())
+    val albumsState: StateFlow<AlbumsUiState> = _albumsState.asStateFlow()
+
+    private val _artistsState = MutableStateFlow(ArtistsUiState())
+    val artistsState: StateFlow<ArtistsUiState> = _artistsState.asStateFlow()
+
+    private val _storageStats = MutableStateFlow(StorageStats())
+    val storageStats: StateFlow<StorageStats> = _storageStats.asStateFlow()
+
+    @Volatile
+    private var hiddenPlaylistIds: Set<String> = emptySet()
 
     // Lightweight client used only to pre-warm the server's stream cache for
     // the NEXT track in the queue, so it starts playing instantly.
@@ -115,17 +219,30 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
     private var lastWarmUpTrackId: String? = null
 
     init {
+        // Sync the optional API key into the HTTP client for every request.
+        viewModelScope.launch {
+            preferencesRepository.apiKeyFlow.collect { key ->
+                musicRepository.refreshApiKeyWith(key)
+            }
+        }
+        viewModelScope.launch {
+            preferencesRepository.hiddenPlaylistsFlow.collect { hidden ->
+                hiddenPlaylistIds = hidden
+                // Re-filter already-loaded playlists instantly.
+                _playlistsState.update { it.copy(playlists = it.playlists.filter { pl -> pl.id !in hidden }) }
+            }
+        }
         // No cache setup at startup: the cache limit defaults to 128MB and the
         // playback cache is built lazily by the media session. Applying the
         // limit here used to release/rebuild the SimpleCache while the player
         // was active, which caused IO errors on slow watches.
 
-        // Record recently played tracks whenever the current track changes,
-        // including auto-advance to the next song. Tracks that are played
-        // substantially (>= 60%) are auto-cached as real downloads so they
-        // keep playing offline even though the stream cache only holds the
-        // bytes that actually streamed. The NEXT queued track is pre-warmed
-        // on the server so it starts playing without the extraction delay.
+        // GUARANTEED offline layer: every streamed song that starts playing is
+        // immediately saved as a real download (subject to the Auto-Cache
+        // toggle, network availability and the 15-song auto-cache cap). This
+        // replaces reliance on ExoPlayer's opaque stream cache — play a song
+        // once online and it plays forever offline. The NEXT queued track is
+        // also pre-warmed on the server to kill extraction delay.
         viewModelScope.launch {
             val autoCachedTrackIds = mutableSetOf<String>()
             var lastTrack: Track? = null
@@ -136,20 +253,17 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
                 val track = state.currentTrack
                 if (track.id.isNotBlank()) {
                     if (track.id != lastTrack?.id) {
-                        // Track changed: the previous one finished or was skipped.
+                        // Track changed: save the previous one if mid-play.
                         lastTrack?.let { previous ->
-                            maybeAutoCacheTrack(previous, lastPositionMs, lastDurationMs, autoCachedTrackIds)
+                            maybeAutoCacheTrack(previous, autoCachedTrackIds)
                         }
                         lastTrack = track
                         recentRepository.recordPlayed(track)
-                    } else if (!state.isPlaying &&
-                        lastDurationMs > 0 &&
-                        lastPositionMs >= lastDurationMs * 0.6 &&
-                        track.id !in autoCachedTrackIds
-                    ) {
-                        // The last track in the queue ended: auto-cache it too.
-                        maybeAutoCacheTrack(track, lastPositionMs, lastDurationMs, autoCachedTrackIds)
                     }
+
+                    // Save the CURRENT track too so even the first song of a
+                    // session is protected.
+                    maybeAutoCacheTrack(track, autoCachedTrackIds)
 
                     // Pre-warm the server for the upcoming song (1-byte request:
                     // the server resolves + caches the real stream URL so the
@@ -187,20 +301,21 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
+    fun setAutoCacheEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setAutoCacheEnabled(enabled)
+        }
+    }
+
     private fun maybeAutoCacheTrack(
         track: Track,
-        positionMs: Long,
-        durationMs: Long,
         evaluatedTrackIds: MutableSet<String>
     ) {
         if (track.id in evaluatedTrackIds) return
+        if (!autoCacheEnabled.value) return
         // Only streamed tracks can be auto-cached; local files are already offline.
         if (!track.mediaUri.startsWith("http")) return
         if (!isNetworkAvailable()) return
-
-        val duration = if (durationMs > 0) durationMs else track.durationMs
-        val playedRatio = if (duration > 0) positionMs.toDouble() / duration else 0.0
-        if (playedRatio < 0.6) return
 
         if (downloadManager.isDownloading(track.id)) return
         if (downloads.value.any { it.trackId == track.id && it.isCompleted() }) return
@@ -302,12 +417,191 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
         playbackController.addToQueue(listOf(track))
     }
 
+    /**
+     * Live search suggestions while typing (debounced 300 ms). Blank input
+     * clears them immediately.
+     */
+    fun onSearchTextChanged(text: String) {
+        suggestionsJob?.cancel()
+        if (text.isBlank()) {
+            _searchState.update { it.copy(suggestions = emptyList()) }
+            return
+        }
+        suggestionsJob = viewModelScope.launch {
+            delay(300)
+            val result = musicRepository.getSuggestions(text.trim())
+            result.onSuccess { list ->
+                _searchState.update { it.copy(suggestions = list.take(6)) }
+            }.onFailure {
+                _searchState.update { it.copy(suggestions = emptyList()) }
+            }
+        }
+    }
+
+    private var albumsJob: Job? = null
+
+    fun searchAlbums(query: String) {
+        if (query.isBlank()) {
+            _albumsState.update { it.copy(query = "", albums = emptyList(), isLoading = false) }
+            return
+        }
+        albumsJob?.cancel()
+        _albumsState.update { it.copy(query = query, isLoading = true, errorMessage = null) }
+        albumsJob = viewModelScope.launch {
+            val result = musicRepository.searchAlbums(query.trim())
+            result.onSuccess { albums ->
+                _albumsState.update { it.copy(albums = albums, isLoading = false) }
+            }.onFailure { err ->
+                _albumsState.update {
+                    it.copy(albums = emptyList(), isLoading = false, errorMessage = err.message ?: "Could not load albums")
+                }
+            }
+        }
+    }
+
+    /** Local grouping of downloaded + favorite songs by artist name. */
+    fun refreshArtists() {
+        viewModelScope.launch {
+            _artistsState.value = ArtistsUiState(isLoading = true)
+            val downloaded = completedTracks.value
+            val favorites = favoritesState.value.tracks
+            val combined = (downloaded + favorites).distinctBy { it.id }
+            val groups = combined
+                .filter { it.artist.isNotBlank() }
+                .groupBy { it.artist.trim().lowercase() }
+                .map { (_, songs) -> ArtistGroup(name = songs.first().artist.trim(), songs = songs.sortedBy { it.title.lowercase() }) }
+                .sortedBy { it.name.lowercase() }
+            _artistsState.value = ArtistsUiState(artists = groups)
+        }
+    }
+
+    fun refreshStorageStats() {
+        viewModelScope.launch {
+            val entities = downloadManager.allDownloadsFlow.first().filter { it.isCompleted() }
+            val autoEntities = entities.filter { it.autoCached }
+            val manualEntities = entities.filterNot { it.autoCached }
+            val cacheBytes = withContext(Dispatchers.IO) {
+                WearsicPlaybackCacheManager.getUsedCacheSizeBytes(getApplication<Application>())
+            }
+            _storageStats.value = StorageStats(
+                autoCount = autoEntities.size,
+                autoMb = autoEntities.sumOf { it.fileSizeBytes } / (1024.0 * 1024.0),
+                manualCount = manualEntities.size,
+                manualMb = manualEntities.sumOf { it.fileSizeBytes } / (1024.0 * 1024.0),
+                streamCacheMb = cacheBytes / (1024.0 * 1024.0)
+            )
+        }
+    }
+
+    fun purgeStreamCache(onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                WearsicPlaybackCacheManager.cleanCache(getApplication<Application>())
+            }
+            refreshStorageStats()
+            onDone()
+        }
+    }
+
+    fun clearAutoCachedDownloads() {
+        viewModelScope.launch {
+            val ids = downloadManager.allDownloadsFlow.first()
+                .filter { it.isCompleted() && it.autoCached }
+                .map { it.trackId }
+            ids.forEach { deleteDownload(it) }
+        }
+    }
+
+    fun toggleHiddenPlaylist(id: String) {
+        viewModelScope.launch {
+            preferencesRepository.toggleHiddenPlaylist(id)
+        }
+    }
+
+    /**
+     * DELETE a whole playlist server-side. The server's delete-track endpoint
+     * treats videoId "*" as "remove the entire playlist" (FK cascades tracks).
+     */
+    fun removePlaylist(id: String) {
+        viewModelScope.launch {
+            musicRepository.removeTrackFromPlaylist(id, "*")
+            refreshLibrary()
+        }
+    }
+
+    fun addToPlaylist(playlistId: String, track: Track) {
+        viewModelScope.launch {
+            musicRepository.addTrackToPlaylist(playlistId, track)
+        }
+    }
+
+    fun createPlaylistAndAdd(name: String, track: Track?) {
+        viewModelScope.launch {
+            val created = musicRepository.createPlaylist(name.trim())
+            created.onSuccess { playlist ->
+                if (track != null && track.id.isNotBlank()) {
+                    musicRepository.addTrackToPlaylist(playlist.id, track)
+                }
+                refreshLibrary()
+            }
+        }
+    }
+
+    /**
+     * RADIO: fetches songs related to the current track from the server and
+     * appends them to the queue (skipping duplicates already queued).
+     */
+    fun startRadio() {
+        val current = playbackController.uiState.value.currentTrack
+        if (current.id.isBlank()) return
+        radioJob?.cancel()
+        radioJob = viewModelScope.launch {
+            _radioState.value = RadioState.Loading
+            val result = musicRepository.getRelated(current.id)
+            result.onSuccess { related ->
+                val existingIds = playbackController.uiState.value.playlist.map { it.id }.toSet()
+                // Exclude 10min+ videos — those are usually full-album "mixes",
+                // not individual songs.
+                val fresh = related.filter { rel ->
+                    rel.id !in existingIds && rel.durationMs in 1..600_000
+                }
+                if (fresh.isEmpty()) {
+                    _radioState.value = RadioState.Idle
+                    return@launch
+                }
+                playbackController.addToQueue(fresh)
+                _radioState.value = RadioState.Idle
+            }.onFailure { err ->
+                _radioState.value = RadioState.Error(err.message ?: "Radio unavailable")
+                // Auto-clear transient error after a moment.
+                delay(2500)
+                _radioState.value = RadioState.Idle
+            }
+        }
+    }
+
     fun removeFromQueue(index: Int) {
         playbackController.removeFromQueue(index)
     }
 
     fun seekToQueueItem(index: Int) {
         playbackController.seekToQueueItem(index)
+    }
+
+    fun handleTileAction(action: String) {
+        when (action) {
+            "prev" -> skipToPrevious()
+            "next" -> skipToNext()
+            "toggle" -> togglePlayPause()
+        }
+    }
+
+    fun toggleShuffle() {
+        playbackController.toggleShuffle()
+    }
+
+    fun cycleRepeatMode() {
+        playbackController.cycleRepeatMode()
     }
 
     fun clearQueue() {
@@ -452,7 +746,7 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
             } else {
                 errorMessage = favoritesResult.exceptionOrNull()?.message ?: "Could not load favorites"
             }
-            val playlists = playlistsResult.getOrNull()
+            val playlists = playlistsResult.getOrNull()?.filter { it.id !in hiddenPlaylistIds }
             if (playlists != null) {
                 // no-op, applied below
             } else {
@@ -485,8 +779,16 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
             _playlistDetailState.update {
                 it.copy(playlistId = playlistId, isLoading = true, errorMessage = null, tracks = emptyList())
             }
-            val result = musicRepository.getPlaylistTracks(playlistId)
+            // Albums pass a full playlist URL; server playlists pass an id.
+            var result = musicRepository.getPlaylistTracksFlexible(playlistId)
+            if (result.isFailure) {
+                // Heavy extractions (large albums) occasionally time out on
+                // first hit — retry once silently.
+                delay(1500)
+                result = musicRepository.getPlaylistTracksFlexible(playlistId)
+            }
             result.onSuccess { tracks ->
+                if (_playlistDetailState.value.playlistId != playlistId) return@onSuccess
                 _playlistDetailState.update {
                     it.copy(playlistId = playlistId, tracks = tracks, isLoading = false, errorMessage = null)
                 }
@@ -520,7 +822,14 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
     }
 
     fun playTracksFromList(tracks: List<Track>, startIndex: Int = 0) {
-        playbackController.playTracks(tracks, startIndex)
+        viewModelScope.launch {
+            // Offline-smart: swap every track for its downloaded file when one
+            // exists, so saved songs NEVER re-stream from the server.
+            val resolved = tracks.map { t ->
+                downloadRepository.getDownloadedTrack(t.id) ?: t
+            }
+            playbackController.playTracks(resolved, startIndex.coerceIn(0, resolved.lastIndex))
+        }
     }
 
     fun refreshOutputDevice() {

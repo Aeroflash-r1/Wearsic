@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.content.Context
+import com.example.model.Album
 import com.example.model.Playlist
 import com.example.model.Track
 import com.example.network.WearsicApiClient
@@ -8,6 +9,7 @@ import com.example.network.WearsicHttpApiClient
 import com.example.network.model.ConnectionTestState
 import com.example.network.model.TrackDto
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 class WearsicMusicRepository(
     private val context: Context,
@@ -16,6 +18,16 @@ class WearsicMusicRepository(
 ) {
 
     val serverUrlFlow = preferencesRepository.serverUrlFlow
+
+    /** Pushes the stored API key into the HTTP client. */
+    suspend fun refreshApiKeyWith(key: String) {
+        (httpApiClient as? WearsicHttpApiClient)?.currentApiKey = key
+    }
+
+    suspend fun saveApiKey(key: String) {
+        preferencesRepository.saveApiKey(key)
+        refreshApiKeyWith(key)
+    }
 
     suspend fun getServerUrl(): String {
         return preferencesRepository.serverUrlFlow.first()
@@ -96,5 +108,51 @@ class WearsicMusicRepository(
     suspend fun removeTrackFromPlaylist(playlistId: String, trackId: String): Result<Unit> {
         val currentUrl = getServerUrl()
         return httpApiClient.removeTrackFromPlaylist(currentUrl, playlistId, trackId)
+    }
+
+    suspend fun getSuggestions(query: String): Result<List<String>> {
+        val currentUrl = getServerUrl()
+        return httpApiClient.getSuggestions(currentUrl, query)
+    }
+
+    suspend fun getRelated(videoId: String): Result<List<Track>> {
+        val currentUrl = getServerUrl()
+        return httpApiClient.getRelated(currentUrl, videoId).map { dtoList -> dtoList.map { it.toDomainTrack() } }
+    }
+
+    suspend fun searchAlbums(query: String): Result<List<Album>> {
+        val currentUrl = getServerUrl()
+        return httpApiClient.searchAlbums(currentUrl, query).map { dtoList -> dtoList.map { it.toDomainAlbum() } }
+    }
+
+    /**
+     * Resolves a playlist by server id OR by full URL (albums use URLs).
+     */
+    suspend fun getPlaylistTracksFlexible(playlistRef: String): Result<List<Track>> {
+        val currentUrl = getServerUrl()
+        return if (playlistRef.startsWith("http")) {
+            httpApiClient.getPlaylistByUrl(currentUrl, playlistRef).map { it.tracks.map { t -> t.toDomainTrack() } }
+        } else {
+            httpApiClient.getPlaylistTracks(currentUrl, playlistRef).map { it.tracks.map { t -> t.toDomainTrack() } }
+        }
+    }
+
+    suspend fun createPlaylist(name: String): Result<Playlist> {
+        val currentUrl = getServerUrl()
+        return httpApiClient.createPlaylist(currentUrl, name).map { it.toDomainPlaylist() }
+    }
+
+    suspend fun addTrackToPlaylist(playlistId: String, track: Track): Result<Unit> {
+        val currentUrl = getServerUrl()
+        val dto = TrackDto(
+            id = track.id,
+            title = track.title,
+            artist = track.artist,
+            album = null,
+            artworkUrl = track.artworkUrl,
+            durationMs = track.durationMs,
+            streamUrl = track.mediaUri
+        )
+        return httpApiClient.addTrackToPlaylist(currentUrl, playlistId, dto)
     }
 }

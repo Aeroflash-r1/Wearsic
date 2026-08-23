@@ -2,7 +2,9 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.HourglassEmpty
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueueMusic
@@ -37,6 +40,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
@@ -62,6 +67,8 @@ import coil.request.ImageRequest
 import com.example.model.Track
 import com.example.ui.components.WearsicScreenHeader
 import com.example.ui.theme.WearsicBlack
+import com.example.ui.theme.WearsicGlassBorder
+import com.example.ui.theme.WearsicGlassFill
 import com.example.ui.theme.WearsicLavenderContainer
 import com.example.ui.theme.WearsicSurface
 import com.example.ui.theme.WearsicSurfaceActive
@@ -80,15 +87,19 @@ import com.example.ui.util.wearsicRotaryScroll
 fun SearchScreen(
     searchState: SearchUiState,
     onQuerySelected: (String) -> Unit,
+    onSearchTextChanged: (String) -> Unit = {},
     onTrackSelected: (Track) -> Unit,
     onDownloadTrack: (Track) -> Unit = {},
     onAddToQueue: (Track) -> Unit = {},
+    playlists: List<com.example.model.Playlist> = emptyList(),
+    onCreatePlaylistAndAdd: (String, Track) -> Unit = { _, _ -> },
+    onAddToPlaylist: (String, Track) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val listState = rememberScalingLazyListState()
     val keyboardController = LocalSoftwareKeyboardController.current
-    val quickQueries = listOf("Crowded House", "Rock", "Pop", "Acoustic")
     var typedQuery by remember(searchState.query) { mutableStateOf(searchState.query) }
+    var actionTrack by remember { mutableStateOf<Track?>(null) }
 
     // Wear keyboards are inconsistent: the enter key may fire onSearch, onDone
     // or onGo depending on the active IME. Handle all of them and dismiss the
@@ -97,6 +108,7 @@ fun SearchScreen(
         val query = typedQuery.trim()
         if (query.isNotBlank()) {
             keyboardController?.hide()
+            onSearchTextChanged("")
             onQuerySelected(query)
         }
     }
@@ -132,7 +144,7 @@ fun SearchScreen(
                         .fillMaxWidth()
                         .height(38.dp)
                         .clip(CircleShape)
-                        .background(if (isFocused) WearsicSurfaceActive else WearsicSurface)
+                        .background(if (isFocused) WearsicSurfaceActive else WearsicGlassFill)
                         .border(
                             1.dp,
                             if (isFocused) WearsicVibrantLavender else WearsicSurfaceBorderSubtle,
@@ -169,7 +181,10 @@ fun SearchScreen(
 
                             BasicTextField(
                                 value = typedQuery,
-                                onValueChange = { typedQuery = it },
+                                onValueChange = {
+                                    typedQuery = it
+                                    onSearchTextChanged(it)
+                                },
                                 singleLine = true,
                                 textStyle = TextStyle(
                                     color = WearsicTextPrimary,
@@ -213,40 +228,42 @@ fun SearchScreen(
                 }
             }
 
-            // Quick Category Chips
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    quickQueries.take(2).forEach { query ->
-                        QuickChip(
-                            label = query,
-                            isSelected = searchState.query == query,
-                            onClick = { onQuerySelected(query) },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-            }
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    quickQueries.drop(2).take(2).forEach { query ->
-                        QuickChip(
-                            label = query,
-                            isSelected = searchState.query == query,
-                            onClick = { onQuerySelected(query) },
-                            modifier = Modifier.weight(1f)
-                        )
+            // Live Suggestions (while typing)
+            if (searchState.suggestions.isNotEmpty() && typedQuery.isNotBlank()) {
+                items(searchState.suggestions.size) { index ->
+                    val suggestion = searchState.suggestions[index]
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(CircleShape)
+                            .background(WearsicGlassFill)
+                            .border(1.dp, WearsicGlassBorder, CircleShape)
+                            .clickable {
+                                keyboardController?.hide()
+                                typedQuery = suggestion
+                                onQuerySelected(suggestion)
+                                onSearchTextChanged("")
+                            }
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .testTag("search_suggestion_$index"),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Rounded.Search,
+                                contentDescription = null,
+                                tint = WearsicVibrantLavender,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = suggestion,
+                                color = WearsicTextPrimary,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
@@ -298,6 +315,8 @@ fun SearchScreen(
                 SearchTrackItem(
                     track = track,
                     onClick = { onTrackSelected(track) },
+                    onLongPress = { actionTrack = track },
+                    onMore = { actionTrack = track },
                     onDownload = { onDownloadTrack(track) },
                     onAddToQueue = { onAddToQueue(track) }
                 )
@@ -308,45 +327,29 @@ fun SearchScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
-    }
-}
 
-@Composable
-private fun QuickChip(
-    label: String,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .clip(CircleShape)
-            .background(if (isSelected) WearsicVibrantLavender else WearsicSurface)
-            .border(
-                1.dp,
-                if (isSelected) WearsicVibrantLavender else WearsicSurfaceBorderSubtle,
-                CircleShape
+        actionTrack?.let { t ->
+            com.example.ui.components.WearsicTrackActionSheet(
+                track = t,
+                playlists = playlists,
+                onDismiss = { actionTrack = null },
+                onPlay = { onTrackSelected(t) },
+                onQueue = { onAddToQueue(t) },
+                onDownload = { onDownloadTrack(t) },
+                onAddToPlaylist = { pid -> onAddToPlaylist(pid, t) },
+                onCreatePlaylistAndAdd = { name -> onCreatePlaylistAndAdd(name, t) }
             )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp)
-            .testTag("search_chip_$label"),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            color = if (isSelected) WearsicTextPrimaryDark else WearsicTextPrimary,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        }
     }
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun SearchTrackItem(
     track: Track,
     onClick: () -> Unit,
+    onLongPress: () -> Unit = {},
+    onMore: () -> Unit = {},
     onDownload: () -> Unit = {},
     onAddToQueue: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -356,9 +359,9 @@ private fun SearchTrackItem(
         modifier = modifier
             .fillMaxWidth()
             .clip(CircleShape)
-            .background(WearsicSurface)
-            .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
-            .clickable(onClick = onClick)
+            .background(WearsicGlassFill)
+            .border(1.dp, WearsicGlassBorder, CircleShape)
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .testTag("search_track_${track.id}")
     ) {
@@ -423,6 +426,26 @@ private fun SearchTrackItem(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(com.example.ui.theme.WearsicGlassFill)
+                        .border(1.dp, com.example.ui.theme.WearsicGlassBorder, CircleShape)
+                        .clickable(onClick = onMore)
+                        .testTag("search_more_${track.id}"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.MoreHoriz,
+                        contentDescription = "More actions",
+                        tint = com.example.ui.theme.WearsicTextMuted,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
                 // Add to Queue button
                 Box(
                     modifier = Modifier

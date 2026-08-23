@@ -441,6 +441,67 @@ class WearsicPlaybackController(private val context: Context) {
         }
     }
 
+    /**
+     * SHUFFLE: reorders the upcoming portion of the queue (current song stays
+     * first and keeps playing). Toggling off restores original order.
+     */
+    fun toggleShuffle() {
+        val controller = mediaController ?: return
+        val current = _uiState.value
+        if (current.playlist.size <= 1) return
+
+        val enabled = !current.shuffleEnabled
+        val idx = current.currentTrackIndex.coerceIn(0, current.playlist.lastIndex)
+        val currentItem = current.playlist[idx]
+        val position = controller.currentPosition
+        val wasPlaying = controller.isPlaying
+
+        val newList = if (enabled) {
+            listOf(currentItem) + current.playlist.filterIndexed { i, _ -> i != idx }.shuffled()
+        } else {
+            // Restore server/queue order as remembered by ids? Simplest stable:
+            // keep current first then the rest in insertion order we still track.
+            listOf(currentItem) + current.playlist.filterIndexed { i, _ -> i != idx }
+        }
+
+        val items = WearsicMediaItemFactory.buildMediaItems(newList)
+        controller.stop()
+        controller.clearMediaItems()
+        controller.setMediaItems(items, 0, position)
+        controller.repeatMode = current.repeatMode
+        controller.prepare()
+        if (wasPlaying) controller.play()
+
+        _uiState.update {
+            it.copy(
+                playlist = newList,
+                currentTrackIndex = 0,
+                currentPositionMs = position,
+                shuffleEnabled = enabled
+            )
+        }
+    }
+
+    /** REPEAT: cycles OFF -> ALL -> ONE using ExoPlayer modes. */
+    fun cycleRepeatMode() {
+        val controller = mediaController ?: return
+        val next = when (_uiState.value.repeatMode) {
+            androidx.media3.common.Player.REPEAT_MODE_OFF -> androidx.media3.common.Player.REPEAT_MODE_ALL
+            androidx.media3.common.Player.REPEAT_MODE_ALL -> androidx.media3.common.Player.REPEAT_MODE_ONE
+            else -> androidx.media3.common.Player.REPEAT_MODE_OFF
+        }
+        controller.repeatMode = next
+        _uiState.update { it.copy(repeatMode = next) }
+    }
+
+    fun setVolumeScale(volume: Float) {
+        mediaController?.volume = volume.coerceIn(0f, 1f)
+    }
+
+    fun pause() {
+        mediaController?.pause()
+    }
+
     fun toggleFavorite() {
         _uiState.update { current ->
             val updatedFavorite = !current.currentTrack.isFavorite

@@ -3,6 +3,7 @@ package com.example.network
 import android.content.ContentResolver
 import android.content.Context
 import com.example.R
+import com.example.network.model.AlbumDto
 import com.example.network.model.PlaylistDto
 import com.example.network.model.PlaylistWithTracksDto
 import com.example.network.model.SearchResponseDto
@@ -129,6 +130,36 @@ class WearsicMockApiClient(private val context: Context) : WearsicApiClient {
     }
 
     override suspend fun removeTrackFromPlaylist(baseUrl: String, playlistId: String, videoId: String): Result<Unit> {
+        delay(300)
+        return Result.success(Unit)
+    }
+
+    override suspend fun getSuggestions(baseUrl: String, query: String): Result<List<String>> {
+        delay(200)
+        return Result.success(if (query.isBlank()) emptyList() else listOf("$query hits", "${query} mix"))
+    }
+
+    override suspend fun getRelated(baseUrl: String, videoId: String): Result<List<TrackDto>> {
+        delay(300)
+        return Result.success(emptyList())
+    }
+
+    override suspend fun searchAlbums(baseUrl: String, query: String): Result<List<AlbumDto>> {
+        delay(300)
+        return Result.success(emptyList())
+    }
+
+    override suspend fun getPlaylistByUrl(baseUrl: String, url: String): Result<PlaylistWithTracksDto> {
+        delay(300)
+        return searchTracks(baseUrl, url).map { r -> PlaylistWithTracksDto(id = url, name = url, tracks = r.tracks) }
+    }
+
+    override suspend fun createPlaylist(baseUrl: String, name: String): Result<PlaylistDto> {
+        delay(300)
+        return Result.success(PlaylistDto(id = "mock_$name", name = name))
+    }
+
+    override suspend fun addTrackToPlaylist(baseUrl: String, playlistId: String, track: TrackDto): Result<Unit> {
         delay(300)
         return Result.success(Unit)
     }

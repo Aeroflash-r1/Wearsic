@@ -27,26 +27,31 @@ object WearsicPlaybackCacheManager {
     private const val DEFAULT_CACHE_BYTES = 32L * 1024L * 1024L // 32 MB
 
     fun getCacheDir(context: Context): File {
-        return File(context.cacheDir, CACHE_DIR_NAME).apply {
+        // Permanent app storage (NOT cacheDir): Android wipes cacheDir under
+        // storage pressure, which made the playback cache feel unreliable.
+        val persistentDir = File(context.filesDir, CACHE_DIR_NAME).apply {
             if (!exists()) mkdirs()
         }
+
+        // One-time cleanup of the legacy temp-location cache.
+        val legacyDir = File(context.cacheDir, CACHE_DIR_NAME)
+        if (legacyDir.exists()) {
+            try { legacyDir.deleteRecursively() } catch (_: Exception) {}
+        }
+
+        return persistentDir
     }
 
     /**
-     * Applies a new cache size limit. If a cache is already built, it is released
-     * so the next [getCache] call rebuilds with the new evictor.
+     * Applies a new cache size limit for the NEXT cache build. Deliberately
+     * does NOT release a live SimpleCache — doing so while ExoPlayer holds
+     * open CacheDataSources silently broke all further caching until the
+     * player was recreated.
      */
     @Synchronized
     fun setCacheLimit(maxCacheSizeBytes: Long) {
         if (maxCacheSizeBytes <= 0L) return
         configuredLimitBytes = maxCacheSizeBytes
-        val current = simpleCache
-        if (current != null) {
-            try {
-                current.release()
-            } catch (_: Exception) {}
-            simpleCache = null
-        }
     }
 
     @Synchronized
@@ -101,6 +106,20 @@ object WearsicPlaybackCacheManager {
                 )
             }
         }
+    }
+
+    /**
+     * Removes one URL's streamed bytes from the playback cache. Called when a
+     * song finishes downloading so the audio never exists twice on disk
+     * (download file + cached stream chunks would double storage usage).
+     */
+    @Synchronized
+    @androidx.annotation.OptIn(UnstableApi::class)
+    fun removeCachedResource(url: String) {
+        if (url.isBlank()) return
+        try {
+            simpleCache?.removeResource(url)
+        } catch (_: Exception) {}
     }
 
     @Synchronized

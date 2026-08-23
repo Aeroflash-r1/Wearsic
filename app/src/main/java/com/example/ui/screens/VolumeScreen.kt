@@ -33,8 +33,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import com.example.ui.theme.WearsicGlassBorder
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -65,6 +69,8 @@ import com.example.ui.util.wearsicRotaryScroll
 @Composable
 fun VolumeScreen(
     currentOutputDevice: String = "Watch Speaker",
+    sleepRemainingMs: Long = 0L,
+    onSleepTimerSet: (Int) -> Unit = {},
     onOutputDeviceChanged: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -138,14 +144,18 @@ fun VolumeScreen(
                             testTag = "volume_decrease_button"
                         )
 
-                        // Center Volume Percentage Indicator
+                        // Center Volume Percentage Indicator — gradient hero number
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 text = "$volumeLevel%",
-                                color = WearsicVibrantLavender,
-                                fontSize = 16.sp,
+                                fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center
+                                textAlign = TextAlign.Center,
+                                style = TextStyle(
+                                    brush = Brush.verticalGradient(
+                                        listOf(WearsicVibrantLavender, Color(0xFFE8D9FF))
+                                    )
+                                )
                             )
                             Text(
                                 text = if (volumeLevel == 0) "Muted" else "Level",
@@ -170,6 +180,50 @@ fun VolumeScreen(
                             iconSize = 18.dp,
                             backgroundColor = WearsicSurfaceActive,
                             testTag = "volume_increase_button"
+                        )
+                    }
+                }
+            }
+
+            // Sleep Timer Chips
+            item {
+                val options = listOf(15, 30, 45, 60)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        options.forEach { mins ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(WearsicSurface)
+                                    .border(1.dp, WearsicVibrantLavender.copy(alpha = 0.4f), CircleShape)
+                                    .clickable { onSleepTimerSet(mins) }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "${mins}m",
+                                    color = WearsicTextPrimary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(WearsicSurface)
+                                .border(1.dp, WearsicGlassBorder, CircleShape)
+                                .clickable { onSleepTimerSet(0) }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text("Off", color = WearsicTextMuted, fontSize = 11.sp)
+                        }
+                    }
+                    if (sleepRemainingMs > 0) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "🌙 Sleep in ${sleepRemainingMs / 60000}m ${(sleepRemainingMs % 60000) / 1000}s",
+                            color = WearsicVibrantLavender,
+                            fontSize = 11.sp
                         )
                     }
                 }

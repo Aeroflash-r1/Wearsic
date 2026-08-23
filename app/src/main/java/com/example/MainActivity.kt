@@ -3,6 +3,7 @@ package com.example
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -15,6 +16,11 @@ import com.example.ui.navigation.WearsicApp
 import com.example.ui.theme.WearsicTheme
 
 class MainActivity : ComponentActivity() {
+
+    companion object {
+        @Volatile
+        var pendingTileAction: String? = null
+    }
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -30,6 +36,8 @@ class MainActivity : ComponentActivity() {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
+        handleTileIntent(intent)
+
         setContent {
             WearsicTheme {
                 // Scale all app text up for comfortable reading on the watch.
@@ -42,6 +50,17 @@ class MainActivity : ComponentActivity() {
                     WearsicApp()
                 }
             }
+        }
+    }
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleTileIntent(intent)
+    }
+
+    private fun handleTileIntent(intent: android.content.Intent?) {
+        val action = intent?.getStringExtra("tile_action")
+        if (!action.isNullOrBlank()) {
+            pendingTileAction = action
         }
     }
 }

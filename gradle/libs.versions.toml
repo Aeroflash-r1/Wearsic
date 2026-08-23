@@ -16,6 +16,8 @@ kotlinxCoroutinesTest = "1.10.2"
 core = "1.6.1"
 runner = "1.6.2"
 coilCompose = "2.7.0"
+androidxTiles = "1.4.1"
+androidxOngoing = "1.0.0"
 kotlinxCoroutinesAndroid = "1.10.2"
 kotlinxCoroutinesCore = "1.10.2"
 okhttp = "4.10.0"
@@ -29,6 +31,8 @@ media3 = "1.5.1"
 
 
 [libraries]
+androidx-tiles = { group = "androidx.wear.tiles", name = "tiles", version.ref = "androidxTiles" }
+androidx-ongoing = { group = "androidx.wear", name = "wear-ongoing", version.ref = "androidxOngoing" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

@@ -5,9 +5,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.material3.AppScaffold
@@ -15,9 +19,13 @@ import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
+import com.example.MainActivity
 import com.example.data.db.DownloadState
 import com.example.model.Track
 import com.example.ui.screens.DownloadsScreen
+import com.example.ui.screens.AlbumsScreen
+import com.example.ui.screens.StorageStatsContent
+import com.example.ui.screens.ArtistsScreen
 import com.example.ui.screens.FavoritesScreen
 import com.example.ui.screens.LibraryScreen
 import com.example.ui.screens.PlaceholderScreen
@@ -28,13 +36,22 @@ import com.example.ui.screens.QueueScreen
 import com.example.ui.screens.SearchScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.VolumeScreen
+import com.example.ui.viewmodel.ArtistGroup
 import com.example.ui.viewmodel.WearsicPlayerViewModel
 
 @Composable
 fun WearsicApp(
     modifier: Modifier = Modifier,
     playerViewModel: WearsicPlayerViewModel = viewModel(),
-    timeText: @Composable () -> Unit = { TimeText() }
+    timeText: @Composable () -> Unit = {
+        // Slightly smaller system clock than the default Wear size.
+        val base = LocalDensity.current
+        CompositionLocalProvider(
+            LocalDensity provides Density(base.density, fontScale = 0.85f)
+        ) {
+            TimeText()
+        }
+    }
 ) {
     val navController = rememberSwipeDismissableNavController()
     val playbackState by playerViewModel.uiState.collectAsStateWithLifecycle()
@@ -43,6 +60,13 @@ fun WearsicApp(
     val cacheLimitMb by playerViewModel.cacheLimitMb.collectAsStateWithLifecycle()
     val connectionTestState by playerViewModel.connectionTestState.collectAsStateWithLifecycle()
     val downloads by playerViewModel.downloads.collectAsStateWithLifecycle()
+    val autoCacheEnabled by playerViewModel.autoCacheEnabled.collectAsStateWithLifecycle()
+    val radioState by playerViewModel.radioState.collectAsStateWithLifecycle()
+    val apiKey by playerViewModel.apiKey.collectAsStateWithLifecycle()
+    val storageStats by playerViewModel.storageStats.collectAsStateWithLifecycle()
+    val sleepRemainingMs by playerViewModel.sleepRemainingMs.collectAsStateWithLifecycle()
+    val albumsState by playerViewModel.albumsState.collectAsStateWithLifecycle()
+    val artistsState by playerViewModel.artistsState.collectAsStateWithLifecycle()
     val recentTracks by playerViewModel.recentTracks.collectAsStateWithLifecycle()
     val favoritesState by playerViewModel.favoritesState.collectAsStateWithLifecycle()
     val playlistsState by playerViewModel.playlistsState.collectAsStateWithLifecycle()
@@ -70,6 +94,15 @@ fun WearsicApp(
         playbackState.isPlaying
     ) { playbackState }
 
+    // Execute actions requested from the system Tile (opens app briefly).
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(1500)
+        MainActivity.pendingTileAction?.let { action ->
+            MainActivity.pendingTileAction = null
+            playerViewModel.handleTileAction(action)
+        }
+    }
+
     AppScaffold(
         timeText = timeText,
         modifier = modifier
@@ -96,6 +129,9 @@ fun WearsicApp(
                     onNavigateToPlaylists = {
                         navController.navigate(Screen.Playlists.route)
                     },
+                    onNavigateToAlbums = {
+                        navController.navigate(Screen.Albums.route)
+                    },
                     onNavigateToArtists = {
                         navController.navigate(Screen.Artists.route)
                     },
@@ -115,6 +151,9 @@ fun WearsicApp(
                     onQuerySelected = { query ->
                         playerViewModel.search(query)
                     },
+                    onSearchTextChanged = { text ->
+                        playerViewModel.onSearchTextChanged(text)
+                    },
                     onTrackSelected = { track ->
                         playerViewModel.playTrack(track)
                         navController.navigate(Screen.Player.route)
@@ -124,6 +163,13 @@ fun WearsicApp(
                     },
                     onAddToQueue = { track ->
                         playerViewModel.addToQueue(track)
+                    },
+                    playlists = playlistsState.playlists,
+                    onCreatePlaylistAndAdd = { name, track ->
+                        playerViewModel.createPlaylistAndAdd(name, track)
+                    },
+                    onAddToPlaylist = { playlistId, track ->
+                        playerViewModel.addToPlaylist(playlistId, track)
                     }
                 )
             }
@@ -169,6 +215,10 @@ fun WearsicApp(
             composable(Screen.Volume.route) {
                 VolumeScreen(
                     currentOutputDevice = playbackState.outputDeviceName,
+                    sleepRemainingMs = sleepRemainingMs,
+                    onSleepTimerSet = { minutes ->
+                        playerViewModel.setSleepTimer(minutes)
+                    },
                     onOutputDeviceChanged = {
                         playerViewModel.refreshOutputDevice()
                     }
@@ -189,6 +239,18 @@ fun WearsicApp(
                     cacheLimitMb = cacheLimitMb,
                     onCacheLimitChanged = { newLimit ->
                         playerViewModel.saveCacheLimit(newLimit)
+                    },
+                    apiKey = apiKey,
+                    onApiKeyChanged = { key ->
+                        playerViewModel.setApiKey(key)
+                    },
+                    onOpenStorage = {
+                        playerViewModel.refreshStorageStats()
+                        navController.navigate(Screen.Storage.route)
+                    },
+                    autoCacheEnabled = autoCacheEnabled,
+                    onAutoCacheToggled = { enabled ->
+                        playerViewModel.setAutoCacheEnabled(enabled)
                     },
                     onCleanCache = { onResult ->
                         playerViewModel.cleanPlaybackCache(onResult)
@@ -211,7 +273,13 @@ fun WearsicApp(
                     },
                     onClearQueue = {
                         playerViewModel.clearQueue()
-                    }
+                    },
+                    shuffleEnabled = playbackState.shuffleEnabled,
+                    repeatMode = playbackState.repeatMode,
+                    onToggleShuffle = { playerViewModel.toggleShuffle() },
+                    onCycleRepeat = { playerViewModel.cycleRepeatMode() },
+                    radioState = radioState,
+                    onStartRadio = { playerViewModel.startRadio() }
                 )
             }
 
@@ -235,6 +303,19 @@ fun WearsicApp(
                 )
             }
 
+            // Storage stats
+            composable(Screen.Storage.route) {
+                StorageStatsContent(
+                    autoCount = storageStats.autoCount,
+                    autoMb = storageStats.autoMb,
+                    manualCount = storageStats.manualCount,
+                    manualMb = storageStats.manualMb,
+                    streamCacheMb = storageStats.streamCacheMb,
+                    onPurgeStreamCache = { playerViewModel.purgeStreamCache() },
+                    onClearAutoCached = { playerViewModel.clearAutoCachedDownloads() }
+                )
+            }
+
             // Playlists & Favorites hub
             composable(Screen.Playlists.route) {
                 PlaylistsScreen(
@@ -247,6 +328,9 @@ fun WearsicApp(
                     },
                     onOpenPlaylist = { playlist ->
                         navController.navigate(Screen.PlaylistDetail.createRoute(playlist.id, playlist.name))
+                    },
+                    onRemovePlaylist = { id ->
+                        playerViewModel.removePlaylist(id)
                     }
                 )
             }
@@ -267,6 +351,13 @@ fun WearsicApp(
                     },
                     onRemoveFavorite = { trackId ->
                         playerViewModel.removeFavorite(trackId)
+                    },
+                    playlists = playlistsState.playlists,
+                    onCreatePlaylistAndAdd = { name, track ->
+                        playerViewModel.createPlaylistAndAdd(name, track)
+                    },
+                    onAddToPlaylist = { playlistId, track ->
+                        playerViewModel.addToPlaylist(playlistId, track)
                     }
                 )
             }
@@ -274,7 +365,7 @@ fun WearsicApp(
             // Playlist detail track list
             composable(Screen.PlaylistDetail.route) { backStackEntry ->
                 val playlistId = backStackEntry.arguments?.getString("id") ?: ""
-                val playlistName = Uri.decode(backStackEntry.arguments?.getString("name") ?: "Playlist")
+                val playlistName = backStackEntry.arguments?.getString("name") ?: "Playlist"
                 PlaylistDetailScreen(
                     playlistId = playlistId,
                     playlistName = playlistName,
@@ -291,17 +382,39 @@ fun WearsicApp(
                     },
                     onRemoveTrack = { id, trackId ->
                         playerViewModel.removeTrackFromPlaylist(id, trackId)
+                    },
+                    playlists = playlistsState.playlists,
+                    onCreatePlaylistAndAdd = { name, track ->
+                        playerViewModel.createPlaylistAndAdd(name, track)
+                    },
+                    onAddToPlaylist = { playlistId, track ->
+                        playerViewModel.addToPlaylist(playlistId, track)
                     }
                 )
             }
 
-            // Placeholder: Artists
+            // Albums (search + open as queue)
+            composable(Screen.Albums.route) {
+                AlbumsScreen(
+                    albumsState = albumsState,
+                    onQueryChanged = { query ->
+                        playerViewModel.searchAlbums(query)
+                    },
+                    onOpenAlbum = { album ->
+                        navController.navigate(Screen.PlaylistDetail.createRoute(album.id, album.name))
+                    }
+                )
+            }
+
+            // Artists (local grouping of saved songs)
             composable(Screen.Artists.route) {
-                PlaceholderScreen(
-                    title = "Artists",
-                    milestoneInfo = "Artist catalog coming in future milestone",
-                    icon = Icons.Rounded.Person,
-                    onBack = { navController.popBackStack() }
+                ArtistsScreen(
+                    artistsState = artistsState,
+                    onRefresh = { playerViewModel.refreshArtists() },
+                    onPlayArtistSongs = { group, index ->
+                        playerViewModel.playTracksFromList(group.songs, index)
+                        navController.navigate(Screen.Player.route)
+                    }
                 )
             }
         }

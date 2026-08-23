@@ -2,6 +2,7 @@ package com.example.network.model
 
 import com.example.model.Track
 import com.example.model.Playlist
+import com.example.model.Album
 
 data class ServerHealthDto(
     val status: String = "ok",
@@ -24,11 +25,24 @@ data class TrackDto(
             title = title,
             artist = artist,
             album = album ?: "Single",
-            artworkUrl = artworkUrl,
+            artworkUrl = artworkUrl?.toHighResArtwork(),
             durationMs = durationMs,
             mediaUri = streamUrl,
             isFavorite = false
         )
+    }
+
+    /**
+     * Server search results ship 60x60 thumbnails (`...=w60-h60-l90-rj`).
+     * YouTube resizes on the fly — swapping the size segment gives us crisp
+     * artwork everywhere for a few extra KB per image.
+     */
+    private fun String.toHighResArtwork(): String {
+        return if (contains("ytimg") || contains("googleusercontent")) {
+            replace(Regex("w\\d+-h\\d+"), "w544-h544")
+        } else {
+            this
+        }
     }
 
     fun toRequestBodyJson(): String {
@@ -52,6 +66,28 @@ data class SearchResponseDto(
     val query: String,
     val tracks: List<TrackDto> = emptyList()
 )
+
+data class AlbumDto(
+    val id: String,
+    val name: String,
+    val uploader: String = "",
+    val trackCount: Int = 0,
+    val thumbnailUrl: String? = null
+) {
+    fun toDomainAlbum(): Album {
+        return Album(
+            id = id,
+            name = name,
+            uploader = uploader,
+            trackCount = trackCount,
+            thumbnailUrl = thumbnailUrl?.let { url ->
+                if (url.contains("ytimg") || url.contains("googleusercontent")) {
+                    url.replace(Regex("w\\d+-h\\d+"), "w544-h544")
+                } else url
+            }
+        )
+    }
+}
 
 data class PlaylistDto(
     val id: String,

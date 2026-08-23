@@ -21,6 +21,10 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,9 +66,14 @@ fun FavoritesScreen(
     onPlayTrack: (List<Track>, Int) -> Unit,
     onDownloadTrack: (Track) -> Unit,
     onRemoveFavorite: (String) -> Unit,
+    onQueue: (Track) -> Unit = {},
+    playlists: List<com.example.model.Playlist> = emptyList(),
+    onCreatePlaylistAndAdd: (String, Track) -> Unit = { _, _ -> },
+    onAddToPlaylist: (String, Track) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val listState = rememberScalingLazyListState()
+    var actionTrack by remember { mutableStateOf<Track?>(null) }
 
     LaunchedEffect(Unit) {
         onRefresh()
@@ -162,6 +171,8 @@ fun FavoritesScreen(
                 WearsicLibraryTrackRow(
                     track = track,
                     onPlay = { onPlayTrack(favoritesState.tracks, index) },
+                    onLongPress = { actionTrack = track },
+                    onMore = { actionTrack = track },
                     onDownload = { onDownloadTrack(track) },
                     onRemove = { onRemoveFavorite(track.id) },
                     removeDescription = "Remove Favorite",
@@ -171,6 +182,19 @@ fun FavoritesScreen(
             item {
                 Spacer(modifier = Modifier.height(16.dp))
             }
+        }
+
+        actionTrack?.let { t ->
+            com.example.ui.components.WearsicTrackActionSheet(
+                track = t,
+                playlists = playlists,
+                onDismiss = { actionTrack = null },
+                onPlay = { onPlayTrack(favoritesState.tracks, favoritesState.tracks.indexOfFirst { it.id == t.id }.coerceAtLeast(0)) },
+                onQueue = { onQueue(t) },
+                onDownload = { onDownloadTrack(t) },
+                onAddToPlaylist = { pid -> onAddToPlaylist(pid, t) },
+                onCreatePlaylistAndAdd = { name -> onCreatePlaylistAndAdd(name, t) }
+            )
         }
     }
 }

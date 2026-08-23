@@ -18,6 +18,10 @@ val WearsicLavenderTertiary = Color(0xFFB8A1FF)
 val WearsicLavenderSubtle = Color(0x33D0BCFF)
 val WearsicLavenderContainer = Color(0xFF382959)
 
+// Glassmorphism surfaces: translucent white fills + hairline borders.
+val WearsicGlassFill = Color(0x14FFFFFF)     // white 8%
+val WearsicGlassBorder = Color(0x2EFFFFFF)   // white 18%
+
 // Text Tokens
 val WearsicTextPrimary = Color(0xFFFFFFFF)
 val WearsicTextPrimaryDark = Color(0xFF000000)

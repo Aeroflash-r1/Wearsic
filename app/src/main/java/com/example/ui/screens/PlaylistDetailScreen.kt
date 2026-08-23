@@ -20,6 +20,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,9 +67,14 @@ fun PlaylistDetailScreen(
     onPlayTrack: (List<Track>, Int) -> Unit,
     onDownloadTrack: (Track) -> Unit,
     onRemoveTrack: (String, String) -> Unit,
+    onQueue: (Track) -> Unit = {},
+    playlists: List<com.example.model.Playlist> = emptyList(),
+    onCreatePlaylistAndAdd: (String, Track) -> Unit = { _, _ -> },
+    onAddToPlaylist: (String, Track) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val listState = rememberScalingLazyListState()
+    var actionTrack by remember { mutableStateOf<Track?>(null) }
 
     LaunchedEffect(playlistId) {
         onLoadTracks(playlistId)
@@ -82,7 +91,7 @@ fun PlaylistDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .wearsicRotaryScroll(listState),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 18.dp),
+            contentPadding = PaddingValues(horizontal = 22.dp, vertical = 30.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -163,6 +172,8 @@ fun PlaylistDetailScreen(
                 WearsicLibraryTrackRow(
                     track = track,
                     onPlay = { onPlayTrack(detailState.tracks, index) },
+                    onLongPress = { actionTrack = track },
+                    onMore = { actionTrack = track },
                     onDownload = { onDownloadTrack(track) },
                     onRemove = { onRemoveTrack(playlistId, track.id) },
                     removeDescription = "Remove from Playlist",
@@ -173,6 +184,19 @@ fun PlaylistDetailScreen(
             item {
                 Spacer(modifier = Modifier.height(16.dp))
             }
+        }
+
+        actionTrack?.let { t ->
+            com.example.ui.components.WearsicTrackActionSheet(
+                track = t,
+                playlists = playlists,
+                onDismiss = { actionTrack = null },
+                onPlay = { onPlayTrack(detailState.tracks, detailState.tracks.indexOfFirst { it.id == t.id }.coerceAtLeast(0)) },
+                onQueue = { onQueue(t) },
+                onDownload = { onDownloadTrack(t) },
+                onAddToPlaylist = { pid -> onAddToPlaylist(pid, t) },
+                onCreatePlaylistAndAdd = { name -> onCreatePlaylistAndAdd(name, t) }
+            )
         }
     }
 }

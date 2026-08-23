@@ -11,6 +11,14 @@ data class Track(
     val isFavorite: Boolean = false
 )
 
+data class Album(
+    val id: String = "",
+    val name: String = "",
+    val uploader: String = "",
+    val trackCount: Int = 0,
+    val thumbnailUrl: String? = null
+)
+
 data class Playlist(
     val id: String = "",
     val name: String = "",
@@ -30,5 +38,7 @@ data class PlaybackUiState(
     val hasNext: Boolean = false,
     val hasPrevious: Boolean = false,
     val playlist: List<Track> = emptyList(),
-    val currentTrackIndex: Int = 0
+    val currentTrackIndex: Int = 0,
+    val shuffleEnabled: Boolean = false,
+    val repeatMode: Int = 0
 )

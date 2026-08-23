@@ -1,6 +1,7 @@
 package com.example.network
 
 import com.example.network.model.PlaylistDto
+import com.example.network.model.AlbumDto
 import com.example.network.model.PlaylistWithTracksDto
 import com.example.network.model.SearchResponseDto
 import com.example.network.model.ServerHealthDto
@@ -21,9 +22,16 @@ import java.util.concurrent.TimeUnit
 class WearsicHttpApiClient(
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
         .build()
 ) : WearsicApiClient {
+
+    /** Updated by the repository whenever the user edits their API key. */
+    @Volatile
+    var currentApiKey: String = ""
+
+    private fun Request.Builder.withApiKey(): Request.Builder =
+        if (currentApiKey.isBlank()) this else header("X-Wearsic-Key", currentApiKey)
 
     override suspend fun checkHealth(baseUrl: String): Result<ServerHealthDto> = withContext(Dispatchers.IO) {
         val trimmed = baseUrl.trim()
@@ -37,6 +45,7 @@ class WearsicHttpApiClient(
             val request = Request.Builder()
                 .url(healthUrl)
                 .get()
+                .withApiKey()
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -77,6 +86,7 @@ class WearsicHttpApiClient(
             val request = Request.Builder()
                 .url(searchUrl)
                 .get()
+                .withApiKey()
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -113,6 +123,7 @@ class WearsicHttpApiClient(
             val request = Request.Builder()
                 .url("$sanitizedUrl/api/favorites")
                 .get()
+                .withApiKey()
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -134,6 +145,7 @@ class WearsicHttpApiClient(
             val request = Request.Builder()
                 .url("$sanitizedUrl/api/favorites")
                 .post(track.toRequestBodyJson().toRequestBody(JSON_MEDIA_TYPE))
+                .withApiKey()
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -154,6 +166,7 @@ class WearsicHttpApiClient(
             val request = Request.Builder()
                 .url("$sanitizedUrl/api/favorites/${URLEncoder.encode(videoId, "UTF-8")}")
                 .delete()
+                .withApiKey()
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -174,6 +187,7 @@ class WearsicHttpApiClient(
             val request = Request.Builder()
                 .url("$sanitizedUrl/api/playlists")
                 .get()
+                .withApiKey()
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -210,6 +224,7 @@ class WearsicHttpApiClient(
             val request = Request.Builder()
                 .url("$sanitizedUrl/api/playlists/${URLEncoder.encode(playlistId, "UTF-8")}")
                 .get()
+                .withApiKey()
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -238,6 +253,7 @@ class WearsicHttpApiClient(
             val request = Request.Builder()
                 .url("$sanitizedUrl/api/playlists/${URLEncoder.encode(playlistId, "UTF-8")}/tracks/${URLEncoder.encode(videoId, "UTF-8")}")
                 .delete()
+                .withApiKey()
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -250,6 +266,175 @@ class WearsicHttpApiClient(
             Result.failure(IOException(e.message ?: "Could not remove track"))
         }
     }
+
+
+    override suspend fun getSuggestions(baseUrl: String, query: String): Result<List<String>> =
+        withContext(Dispatchers.IO) {
+            val sanitizedUrl = sanitize(baseUrl)
+                ?: return@withContext Result.failure(IOException("Invalid URL scheme. Must use https:// or http://"))
+            try {
+                val request = Request.Builder()
+                    .url("$sanitizedUrl/api/suggestions?q=${URLEncoder.encode(query, "UTF-8")}")
+                    .get()
+                    .withApiKey()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        return@use Result.failure(IOException("Server error: HTTP ${response.code}"))
+                    }
+                    val json = JSONObject(response.body?.string() ?: "")
+                    val arr = json.optJSONArray("suggestions") ?: org.json.JSONArray()
+                    val list = mutableListOf<String>()
+                    for (i in 0 until arr.length()) list.add(arr.optString(i))
+                    Result.success(list)
+                }
+            } catch (e: Exception) {
+                Result.failure(IOException(e.message ?: "Could not load suggestions"))
+            }
+        }
+
+    override suspend fun getRelated(baseUrl: String, videoId: String): Result<List<TrackDto>> =
+        withContext(Dispatchers.IO) {
+            val sanitizedUrl = sanitize(baseUrl)
+                ?: return@withContext Result.failure(IOException("Invalid URL scheme. Must use https:// or http://"))
+            try {
+                val request = Request.Builder()
+                    .url("$sanitizedUrl/api/related/${URLEncoder.encode(videoId, "UTF-8")}")
+                    .get()
+                    .withApiKey()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        return@use Result.failure(IOException("Server error: HTTP ${response.code}"))
+                    }
+                    val bodyString = response.body?.string() ?: ""
+                    val resultsJson = JSONObject(bodyString).optJSONArray("results") ?: org.json.JSONArray()
+                    Result.success(parseTrackArray(resultsJson, sanitizedUrl))
+                }
+            } catch (e: Exception) {
+                Result.failure(IOException(e.message ?: "Could not load related songs"))
+            }
+        }
+
+    override suspend fun searchAlbums(baseUrl: String, query: String): Result<List<AlbumDto>> =
+        withContext(Dispatchers.IO) {
+            val sanitizedUrl = sanitize(baseUrl)
+                ?: return@withContext Result.failure(IOException("Invalid URL scheme. Must use https:// or http://"))
+            try {
+                val request = Request.Builder()
+                    .url("$sanitizedUrl/api/search/albums?q=${URLEncoder.encode(query, "UTF-8")}")
+                    .get()
+                    .withApiKey()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        return@use Result.failure(IOException("Server error: HTTP ${response.code}"))
+                    }
+                    val arr = org.json.JSONArray(response.body?.string() ?: "[]")
+                    val albums = mutableListOf<AlbumDto>()
+                    for (i in 0 until arr.length()) {
+                        val item = arr.getJSONObject(i)
+                        albums.add(
+                            AlbumDto(
+                                id = item.optString("id"),
+                                name = item.optString("name", "Unknown Album"),
+                                uploader = item.optString("uploader", ""),
+                                trackCount = item.optInt("trackCount", 0),
+                                thumbnailUrl = item.optString("thumbnailUrl").takeIf { it.isNotBlank() }
+                            )
+                        )
+                    }
+                    Result.success(albums)
+                }
+            } catch (e: Exception) {
+                Result.failure(IOException(e.message ?: "Could not load albums"))
+            }
+        }
+
+    override suspend fun getPlaylistByUrl(baseUrl: String, url: String): Result<PlaylistWithTracksDto> =
+        withContext(Dispatchers.IO) {
+            val sanitizedUrl = sanitize(baseUrl)
+                ?: return@withContext Result.failure(IOException("Invalid URL scheme. Must use https:// or http://"))
+            try {
+                val request = Request.Builder()
+                    .url("$sanitizedUrl/api/playlist?url=${URLEncoder.encode(url, "UTF-8")}")
+                    .get()
+                    .withApiKey()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        return@use Result.failure(IOException("Server error: HTTP ${response.code}"))
+                    }
+                    val json = JSONObject(response.body?.string() ?: "{}")
+                    Result.success(
+                        PlaylistWithTracksDto(
+                            id = json.optString("id", url),
+                            name = json.optString("name", "Album"),
+                            tracks = parseTrackArray(json.optJSONArray("tracks") ?: org.json.JSONArray(), sanitizedUrl)
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                Result.failure(IOException(e.message ?: "Could not load album"))
+            }
+        }
+
+    override suspend fun createPlaylist(baseUrl: String, name: String): Result<PlaylistDto> =
+        withContext(Dispatchers.IO) {
+            val sanitizedUrl = sanitize(baseUrl)
+                ?: return@withContext Result.failure(IOException("Invalid URL scheme. Must use https:// or http://"))
+            try {
+                val body = JSONObject().put("name", name).toString().toRequestBody(JSON_MEDIA_TYPE)
+                val request = Request.Builder()
+                    .url("$sanitizedUrl/api/playlists")
+                    .post(body)
+                    .withApiKey()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        return@use Result.failure(IOException("Server error: HTTP ${response.code}"))
+                    }
+                    val json = JSONObject(response.body?.string() ?: "{}")
+                    Result.success(
+                        PlaylistDto(
+                            id = json.optString("id"),
+                            name = json.optString("name", name),
+                            trackCount = json.optInt("trackCount", 0),
+                            thumbnailUrl = null
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                Result.failure(IOException(e.message ?: "Could not create playlist"))
+            }
+        }
+
+    override suspend fun addTrackToPlaylist(baseUrl: String, playlistId: String, track: TrackDto): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            val sanitizedUrl = sanitize(baseUrl)
+                ?: return@withContext Result.failure(IOException("Invalid URL scheme. Must use https:// or http://"))
+            try {
+                val request = Request.Builder()
+                    .url("$sanitizedUrl/api/playlists/${URLEncoder.encode(playlistId, "UTF-8")}/tracks")
+                    .post(track.toRequestBodyJson().toRequestBody(JSON_MEDIA_TYPE))
+                    .withApiKey()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        return@use Result.failure(IOException("Server error: HTTP ${response.code}"))
+                    }
+                    Result.success(Unit)
+                }
+            } catch (e: Exception) {
+                Result.failure(IOException(e.message ?: "Could not add to playlist"))
+            }
+        }
 
     private fun sanitize(baseUrl: String): String? {
         val trimmed = baseUrl.trim()

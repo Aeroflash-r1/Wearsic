@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
@@ -30,6 +31,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -55,6 +59,8 @@ import com.example.ui.components.WearsicScreenHeader
 import com.example.ui.components.WearsicSecondaryPillButton
 import com.example.ui.components.WearsicSettingsActionPill
 import com.example.ui.theme.WearsicBlack
+import com.example.ui.theme.WearsicGlassFill
+import com.example.ui.theme.WearsicGlassBorder
 import com.example.ui.theme.WearsicLavenderContainer
 import com.example.ui.theme.WearsicSurface
 import com.example.ui.theme.WearsicSurfaceBorderSubtle
@@ -71,6 +77,7 @@ fun LibraryScreen(
     onNavigateToSearch: () -> Unit,
     onNavigateToDownloads: () -> Unit,
     onNavigateToPlaylists: () -> Unit,
+    onNavigateToAlbums: () -> Unit = {},
     onNavigateToArtists: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToPlayer: () -> Unit,
@@ -169,7 +176,7 @@ fun LibraryScreen(
                 )
             }
 
-            // Secondary Actions: Playlists & Artists
+            // Secondary Actions: Playlists & Albums
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -183,13 +190,24 @@ fun LibraryScreen(
                         testTag = "library_playlists_button"
                     )
                     WearsicSecondaryPillButton(
-                        label = "Artists",
-                        icon = Icons.Rounded.Person,
-                        onClick = onNavigateToArtists,
+                        label = "Albums",
+                        icon = Icons.Rounded.Album,
+                        onClick = onNavigateToAlbums,
                         modifier = Modifier.weight(1f),
-                        testTag = "library_artists_button"
+                        testTag = "library_albums_button"
                     )
                 }
+            }
+
+            // Artists
+            item {
+                WearsicSecondaryPillButton(
+                    label = "Artists",
+                    icon = Icons.Rounded.Person,
+                    onClick = onNavigateToArtists,
+                    modifier = Modifier.fillMaxWidth(),
+                    testTag = "library_artists_button"
+                )
             }
 
             // Now Playing Shortcut Card
@@ -228,12 +246,19 @@ private fun NowPlayingMiniCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val heroBrush = Brush.linearGradient(
+        listOf(WearsicVibrantLavender, Color(0xFF8A5CF6))
+    )
     Box(
         modifier = modifier
             .fillMaxWidth()
             .clip(CircleShape)
-            .background(WearsicSurface)
-            .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
+            .background(if (isPlaying) heroBrush else SolidColor(WearsicGlassFill))
+            .border(
+                1.dp,
+                if (isPlaying) Color.Transparent else WearsicSurfaceBorderSubtle,
+                CircleShape
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 9.dp)
             .testTag("now_playing_shortcut")
@@ -251,13 +276,15 @@ private fun NowPlayingMiniCard(
                     modifier = Modifier
                         .size(30.dp)
                         .clip(CircleShape)
-                        .background(WearsicLavenderContainer),
+                        .background(
+                            if (isPlaying) Color.Black.copy(alpha = 0.25f) else WearsicLavenderContainer
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.MusicNote,
                         contentDescription = "Now Playing",
-                        tint = WearsicVibrantLavender,
+                        tint = if (isPlaying) WearsicTextPrimaryDark else WearsicVibrantLavender,
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -265,15 +292,19 @@ private fun NowPlayingMiniCard(
                 Column {
                     Text(
                         text = title,
-                        color = WearsicTextPrimary,
+                        color = if (isPlaying) WearsicTextPrimaryDark else WearsicTextPrimary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = artist,
-                        color = WearsicTextSecondary,
+                        text = if (isPlaying) "$artist • Now Playing" else artist,
+                        color = if (isPlaying) {
+                            WearsicTextPrimaryDark.copy(alpha = 0.75f)
+                        } else {
+                            WearsicTextSecondary
+                        },
                         fontSize = 10.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -284,7 +315,9 @@ private fun NowPlayingMiniCard(
                 modifier = Modifier
                     .size(26.dp)
                     .clip(CircleShape)
-                    .background(WearsicVibrantLavender),
+                    .background(
+                        if (isPlaying) Color.White.copy(alpha = 0.9f) else WearsicVibrantLavender
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -309,8 +342,8 @@ private fun RecentTrackRow(
         modifier = modifier
             .fillMaxWidth()
             .clip(CircleShape)
-            .background(WearsicSurface)
-            .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
+            .background(WearsicGlassFill)
+            .border(1.dp, WearsicGlassBorder, CircleShape)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 7.dp)
             .testTag("recent_track_${track.id}")

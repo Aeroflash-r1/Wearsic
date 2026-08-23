@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.StatFs
 import com.example.data.WearsicDownloadRepository
+import com.example.media.cache.WearsicPlaybackCacheManager
 import com.example.model.Track
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -105,6 +106,12 @@ class WearsicDownloadManager(
                 }
 
                 repository.markCompleted(track.id, targetFile.length())
+
+                // De-duplicate storage: the song is now a real file, so purge
+                // its streamed copy from the playback cache.
+                if (track.mediaUri.startsWith("http")) {
+                    WearsicPlaybackCacheManager.removeCachedResource(track.mediaUri)
+                }
 
                 // Keep the auto-cache footprint small: evict the oldest
                 // auto-cached songs beyond the configured cap.

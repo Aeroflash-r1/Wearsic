@@ -4,10 +4,13 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import androidx.datastore.preferences.core.emptyPreferences
 import kotlinx.coroutines.flow.catch
@@ -21,6 +24,9 @@ class WearsicPreferencesRepository(private val context: Context) {
     companion object {
         val KEY_SERVER_URL = stringPreferencesKey("server_url")
         val KEY_CACHE_LIMIT = intPreferencesKey("cache_limit_mb")
+        val KEY_AUTO_CACHE_ENABLED = booleanPreferencesKey("auto_cache_enabled")
+        val KEY_API_KEY = stringPreferencesKey("api_key")
+        val KEY_HIDDEN_PLAYLISTS = stringSetPreferencesKey("hidden_playlists")
         const val DEFAULT_SERVER_URL = "https://tailscale-termux.tail702ad8.ts.net"
         const val DEFAULT_CACHE_LIMIT = 32
     }
@@ -54,6 +60,41 @@ class WearsicPreferencesRepository(private val context: Context) {
         }
     }
 
+    val autoCacheEnabledFlow: Flow<Boolean> = context.dataStore.data
+        .catch { exception ->
+            emit(emptyPreferences())
+        }
+        .map { preferences ->
+            preferences[KEY_AUTO_CACHE_ENABLED] ?: true
+        }
+
+    suspend fun setAutoCacheEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_AUTO_CACHE_ENABLED] = enabled
+        }
+    }
+
+    val apiKeyFlow: Flow<String> = context.dataStore.data
+        .catch { exception ->
+            emit(emptyPreferences())
+        }
+        .map { preferences ->
+            preferences[KEY_API_KEY] ?: ""
+        }
+
+    suspend fun getApiKey(): String {
+        return context.dataStore.data
+            .catch { emit(emptyPreferences()) }
+            .map { preferences -> preferences[KEY_API_KEY] ?: "" }
+            .first()
+    }
+
+    suspend fun saveApiKey(key: String) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_API_KEY] = key.trim()
+        }
+    }
+
     fun isValidServerUrl(url: String): Boolean {
         if (url.isBlank()) return false
         return try {
@@ -62,6 +103,20 @@ class WearsicPreferencesRepository(private val context: Context) {
             (scheme == "http" || scheme == "https") && !uri.host.isNullOrBlank()
         } catch (_: Exception) {
             false
+        }
+    }
+
+    val hiddenPlaylistsFlow: Flow<Set<String>> = context.dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { preferences ->
+            preferences[KEY_HIDDEN_PLAYLISTS] ?: emptySet()
+        }
+
+    suspend fun toggleHiddenPlaylist(id: String) {
+        context.dataStore.edit { preferences ->
+            val current = preferences[KEY_HIDDEN_PLAYLISTS] ?: emptySet()
+            preferences[KEY_HIDDEN_PLAYLISTS] =
+                if (id in current) current - id else current + id
         }
     }
 }

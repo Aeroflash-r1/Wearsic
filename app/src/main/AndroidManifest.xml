@@ -35,6 +35,22 @@
             </intent-filter>
         </service>
 
+        <service
+            android:name=".tile.WearsicTileService"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/ic_launcher_foreground" />
+        </service>
+
+        <service
+            android:name=".tile.TileCommandService"
+            android:exported="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

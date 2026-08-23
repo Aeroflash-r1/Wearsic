@@ -1,8 +1,10 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,9 +24,14 @@ import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -39,14 +46,17 @@ import androidx.wear.compose.material3.Text
 import androidx.wear.tooling.preview.devices.WearDevices
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.model.Playlist
-import com.example.ui.components.WearsicScreenHeader
+import com.example.ui.theme.WearsicGlassBorder
+import com.example.ui.theme.WearsicGlassFill
 import com.example.ui.components.WearsicSecondaryPillButton
+import com.example.ui.components.WearsicScreenHeader
 import com.example.ui.theme.WearsicBlack
+import com.example.ui.theme.WearsicError
 import com.example.ui.theme.WearsicLavenderContainer
 import com.example.ui.theme.WearsicSurface
-import com.example.ui.theme.WearsicSurfaceBorderSubtle
 import com.example.ui.theme.WearsicTextMuted
 import com.example.ui.theme.WearsicTextPrimary
+import com.example.ui.theme.WearsicTextPrimaryDark
 import com.example.ui.theme.WearsicTextSecondary
 import com.example.ui.theme.WearsicTheme
 import com.example.ui.theme.WearsicVibrantLavender
@@ -60,9 +70,11 @@ fun PlaylistsScreen(
     onRefresh: () -> Unit,
     onNavigateToFavorites: () -> Unit,
     onOpenPlaylist: (Playlist) -> Unit,
+    onRemovePlaylist: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val listState = rememberScalingLazyListState()
+    var hideCandidate by remember { mutableStateOf<Playlist?>(null) }
 
     LaunchedEffect(Unit) {
         onRefresh()
@@ -99,7 +111,7 @@ fun PlaylistsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     testTag = "playlists_favorites_button"
                 )
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "${playlistsState.favorites.size} favorite songs",
                     color = WearsicVibrantLavender,
@@ -134,7 +146,7 @@ fun PlaylistsScreen(
                 }
             }
 
-            // Playlist rows
+            // Empty state
             if (!playlistsState.isLoading && playlistsState.playlists.isEmpty()) {
                 item {
                     Column(
@@ -151,7 +163,7 @@ fun PlaylistsScreen(
                             textAlign = TextAlign.Center
                         )
                         Text(
-                            text = "Playlists created on your server will appear here.",
+                            text = "Long-press a playlist to remove it from your server.",
                             color = WearsicTextMuted,
                             fontSize = 10.sp,
                             textAlign = TextAlign.Center,
@@ -161,11 +173,13 @@ fun PlaylistsScreen(
                 }
             }
 
+            // Playlist rows
             playlistsState.playlists.forEach { playlist ->
                 item(key = playlist.id) {
                     PlaylistRow(
                         playlist = playlist,
-                        onClick = { onOpenPlaylist(playlist) }
+                        onClick = { onOpenPlaylist(playlist) },
+                        onLongPress = { hideCandidate = playlist }
                     )
                 }
             }
@@ -174,68 +188,119 @@ fun PlaylistsScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
+
+        // Hide confirmation overlay
+        hideCandidate?.let { pl ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .clickable { hideCandidate = null },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .clip(CircleShape)
+                        .background(WearsicSurface)
+                        .border(1.dp, WearsicVibrantLavender.copy(alpha = 0.5f), CircleShape)
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                ) {
+                    Text(
+                        text = "Remove \"${pl.name}\" from server?",
+                        color = WearsicTextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(WearsicError.copy(alpha = 0.25f))
+                                .border(1.dp, WearsicError, CircleShape)
+                                .clickable {
+                                    onRemovePlaylist(pl.id)
+                                    hideCandidate = null
+                                }
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Text("Remove", color = WearsicError, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(WearsicGlassFill)
+                                .border(1.dp, WearsicGlassBorder, CircleShape)
+                                .clickable { hideCandidate = null }
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Text("Cancel", color = WearsicTextPrimary, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PlaylistRow(
     playlist: Playlist,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onLongPress: () -> Unit = {}
 ) {
     Box(
         modifier = modifier
             .fillMaxWidth()
             .clip(CircleShape)
-            .background(WearsicSurface)
-            .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
-            .clickable(onClick = onClick)
+            .background(WearsicGlassFill)
+            .border(1.dp, WearsicGlassBorder, CircleShape)
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
             .padding(horizontal = 12.dp, vertical = 9.dp)
             .testTag("playlist_${playlist.id}")
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .background(WearsicLavenderContainer),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .background(WearsicLavenderContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.QueueMusic,
-                        contentDescription = null,
-                        tint = WearsicVibrantLavender,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Rounded.QueueMusic,
+                    contentDescription = null,
+                    tint = WearsicVibrantLavender,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
 
-                Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
-                Column {
-                    Text(
-                        text = playlist.name,
-                        color = WearsicTextPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "${playlist.trackCount} tracks",
-                        color = WearsicTextSecondary,
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = playlist.name,
+                    color = WearsicTextPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${playlist.trackCount} tracks",
+                    color = WearsicTextSecondary,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
 
             Icon(

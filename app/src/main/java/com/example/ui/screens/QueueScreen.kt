@@ -18,8 +18,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.RepeatOne
+import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -47,6 +53,8 @@ import com.example.model.Track
 import com.example.ui.components.WearsicScreenHeader
 import com.example.ui.theme.WearsicBlack
 import com.example.ui.theme.WearsicError
+import com.example.ui.theme.WearsicGlassBorder
+import com.example.ui.theme.WearsicGlassFill
 import com.example.ui.theme.WearsicLavenderContainer
 import com.example.ui.theme.WearsicSurface
 import com.example.ui.theme.WearsicSurfaceBorder
@@ -66,6 +74,12 @@ fun QueueScreen(
     onPlayItem: (Int) -> Unit,
     onRemoveItem: (Int) -> Unit,
     onClearQueue: () -> Unit,
+    shuffleEnabled: Boolean = false,
+    repeatMode: Int = 0,
+    onToggleShuffle: () -> Unit = {},
+    onCycleRepeat: () -> Unit = {},
+    radioState: com.example.ui.viewmodel.RadioState = com.example.ui.viewmodel.RadioState.Idle,
+    onStartRadio: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val listState = rememberScalingLazyListState()
@@ -94,6 +108,92 @@ fun QueueScreen(
                     title = "Queue",
                     subtitle = "${upcoming.size} Up Next"
                 )
+            }
+
+            // Shuffle / Repeat toggles (styled to match app icons)
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (shuffleEnabled) WearsicVibrantLavender.copy(alpha = 0.25f)
+                                else WearsicGlassFill
+                            )
+                            .border(
+                                1.dp,
+                                if (shuffleEnabled) WearsicVibrantLavender else WearsicGlassBorder,
+                                CircleShape
+                            )
+                            .clickable(onClick = onToggleShuffle),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Shuffle,
+                            contentDescription = "Shuffle",
+                            tint = if (shuffleEnabled) WearsicVibrantLavender else WearsicTextMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(WearsicGlassFill)
+                            .border(1.dp, WearsicGlassBorder, CircleShape)
+                            .clickable(onClick = onStartRadio),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (radioState is com.example.ui.viewmodel.RadioState.Loading) {
+                                androidx.compose.material.icons.Icons.Rounded.HourglassEmpty
+                            } else {
+                                androidx.compose.material.icons.Icons.Rounded.Radio
+                            },
+                            contentDescription = "Radio: queue similar songs",
+                            tint = if (radioState is com.example.ui.viewmodel.RadioState.Loading) {
+                                WearsicVibrantLavender
+                            } else {
+                                WearsicTextMuted
+                            },
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (repeatMode != 0) WearsicVibrantLavender.copy(alpha = 0.25f)
+                                else WearsicGlassFill
+                            )
+                            .border(
+                                1.dp,
+                                if (repeatMode != 0) WearsicVibrantLavender else WearsicGlassBorder,
+                                CircleShape
+                            )
+                            .clickable(onClick = onCycleRepeat),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (repeatMode == 1) {
+                                androidx.compose.material.icons.Icons.Rounded.RepeatOne
+                            } else {
+                                androidx.compose.material.icons.Icons.Rounded.Repeat
+                            },
+                            contentDescription = if (repeatMode == 1) "Repeat One" else "Repeat All",
+                            tint = if (repeatMode != 0) WearsicVibrantLavender else WearsicTextMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
             }
 
             if (queue.isEmpty()) {
@@ -217,7 +317,11 @@ private fun QueueCurrentCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(CircleShape)
-            .background(WearsicLavenderContainer)
+            .background(
+                Brush.linearGradient(
+                    listOf(WearsicVibrantLavender.copy(alpha = 0.9f), androidx.compose.ui.graphics.Color(0xFF8A5CF6))
+                )
+            )
             .border(1.dp, WearsicVibrantLavender.copy(alpha = 0.5f), CircleShape)
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .testTag("queue_current_track")
@@ -235,13 +339,13 @@ private fun QueueCurrentCard(
                     modifier = Modifier
                         .size(30.dp)
                         .clip(CircleShape)
-                        .background(WearsicVibrantLavender),
+                        .background(WearsicSurface),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.MusicNote,
                         contentDescription = null,
-                        tint = WearsicTextPrimaryDark,
+                        tint = WearsicVibrantLavender,
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -251,7 +355,7 @@ private fun QueueCurrentCard(
                 Column {
                     Text(
                         text = track.title.ifBlank { "No Active Track" },
-                        color = WearsicTextPrimary,
+                        color = WearsicTextPrimaryDark,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
@@ -259,7 +363,7 @@ private fun QueueCurrentCard(
                     )
                     Text(
                         text = if (isPlaying) "Now Playing" else "Paused",
-                        color = WearsicVibrantLavender,
+                        color = if (isPlaying) WearsicTextPrimaryDark else WearsicTextPrimaryDark.copy(alpha = 0.7f),
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1
@@ -281,8 +385,8 @@ private fun QueueTrackItem(
         modifier = modifier
             .fillMaxWidth()
             .clip(CircleShape)
-            .background(WearsicSurface)
-            .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
+            .background(WearsicGlassFill)
+            .border(1.dp, WearsicGlassBorder, CircleShape)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .testTag("queue_track_${track.id}")

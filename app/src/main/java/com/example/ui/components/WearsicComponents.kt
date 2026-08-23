@@ -3,8 +3,11 @@ package com.example.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,11 +18,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -30,6 +40,8 @@ import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.Text
 import com.example.ui.theme.WearsicBlack
+import com.example.ui.theme.WearsicGlassBorder
+import com.example.ui.theme.WearsicGlassFill
 import com.example.ui.theme.WearsicSurface
 import com.example.ui.theme.WearsicSurfaceBorder
 import com.example.ui.theme.WearsicSurfaceBorderSubtle
@@ -58,13 +70,24 @@ fun WearsicPrimaryPillButton(
     contentColor: Color = WearsicTextPrimaryDark,
     iconBgColor: Color = Color(0x1A000000)
 ) {
+    val haptic = LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(52.dp)
+            .graphicsLayer {
+                scaleX = if (pressed) 0.97f else 1f
+                scaleY = if (pressed) 0.96f else 1f
+            }
             .clip(CircleShape)
             .background(backgroundColor)
-            .clickable(onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onClick()
+            }
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.CenterStart
     ) {
@@ -144,13 +167,29 @@ fun WearsicSecondaryPillButton(
     modifier: Modifier = Modifier,
     testTag: String = "secondary_pill_button"
 ) {
+    val haptic = LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+
     Box(
         modifier = modifier
             .height(48.dp)
+            .graphicsLayer {
+                scaleX = if (pressed) 0.97f else 1f
+                scaleY = if (pressed) 0.96f else 1f
+            }
             .clip(CircleShape)
-            .background(WearsicSurface)
-            .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
-            .clickable(onClick = onClick)
+            .background(WearsicGlassFill)
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color.White.copy(alpha = 0.10f), Color.Transparent)
+                )
+            )
+            .border(1.dp, WearsicGlassBorder, CircleShape)
+            .clickable(interactionSource = interaction, indication = null) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onClick()
+            }
             .padding(horizontal = 14.dp)
             .testTag(testTag),
         contentAlignment = Alignment.Center
@@ -222,7 +261,9 @@ fun WearsicSettingsActionPill(
 }
 
 /**
- * Circular Icon Action Button with 48dp touch compliance.
+ * Circular Icon Action Button. Visual size may be small, but the touchable
+ * area is always at least 48dp (Wear OS touch-target guideline) and presses
+ * give haptic feedback.
  */
 @Composable
 fun WearsicCircularIconButton(
@@ -237,23 +278,58 @@ fun WearsicCircularIconButton(
     borderColor: Color = WearsicSurfaceBorderSubtle,
     testTag: String = "circular_icon_button"
 ) {
+    val haptic = LocalHapticFeedback.current
     Box(
         modifier = modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(backgroundColor)
-            .border(1.dp, borderColor, CircleShape)
-            .clickable(onClick = onClick)
+            .size(if (size < 48.dp) 48.dp else size)
+            .clickable {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onClick()
+            }
             .testTag(testTag),
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = iconTint,
-            modifier = Modifier.size(iconSize)
-        )
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(backgroundColor)
+                .border(1.dp, borderColor, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = iconTint,
+                modifier = Modifier.size(iconSize)
+            )
+        }
     }
+}
+
+/**
+ * Frosted-glass surface: translucent fill, vertical sheen, hairline border.
+ * The building block of the glassmorphism look.
+ */
+@Composable
+fun WearsicGlassPanel(
+    modifier: Modifier = Modifier,
+    shape: Shape = CircleShape,
+    content: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(WearsicGlassFill)
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.02f))
+                )
+            )
+            .border(1.dp, WearsicGlassBorder, shape),
+        contentAlignment = Alignment.Center,
+        content = content
+    )
 }
 
 /**
@@ -279,6 +355,19 @@ fun WearsicScreenHeader(
             textAlign = TextAlign.Center,
             letterSpacing = (-0.5).sp
         )
+        // Signature gradient accent bar under every screen title.
+        Box(
+            modifier = Modifier
+                .padding(top = 6.dp)
+                .width(30.dp)
+                .height(3.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(WearsicVibrantLavender, Color(0xFF8A5CF6))
+                    )
+                )
+        )
         if (subtitle != null) {
             Text(
                 text = subtitle,
@@ -286,7 +375,7 @@ fun WearsicScreenHeader(
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Normal,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 1.dp)
+                modifier = Modifier.padding(top = 6.dp)
             )
         }
     }

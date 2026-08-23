@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.material.icons.rounded.NetworkCheck
@@ -84,6 +85,11 @@ fun SettingsScreen(
     onTestConnection: (String) -> Unit = {},
     cacheLimitMb: Int = 32,
     onCacheLimitChanged: (Int) -> Unit = {},
+    apiKey: String = "",
+    onApiKeyChanged: (String) -> Unit = {},
+    onOpenStorage: () -> Unit = {},
+    autoCacheEnabled: Boolean = true,
+    onAutoCacheToggled: (Boolean) -> Unit = {},
     onCleanCache: (onResult: (Long) -> Unit) -> Unit = { onResult -> onResult(0L) },
     onClearDownloads: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -414,6 +420,82 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+
+            // API Key Field (optional security)
+            item {
+                var typedKey by remember(apiKey) { mutableStateOf(apiKey) }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(CircleShape)
+                        .background(WearsicSurface)
+                        .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "API Key (optional)",
+                            color = WearsicTextMuted,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        BasicTextField(
+                            value = typedKey,
+                            onValueChange = {
+                                typedKey = it
+                                onApiKeyChanged(it)
+                            },
+                            singleLine = true,
+                            textStyle = TextStyle(color = WearsicTextPrimary, fontSize = 11.sp),
+                            cursorBrush = SolidColor(WearsicVibrantLavender),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+
+            // Storage Stats Pill
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(CircleShape)
+                        .background(WearsicSurface)
+                        .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
+                        .clickable(onClick = onOpenStorage)
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.SdStorage,
+                            contentDescription = null,
+                            tint = WearsicVibrantLavender,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Text("Storage", color = WearsicTextPrimary, fontSize = 12.sp)
+                    }
+                }
+            }
+
+            // Auto-Cache Toggle Pill
+            item {
+                SettingsPillItem(
+                    title = "Auto-Cache Songs: ${if (autoCacheEnabled) "On" else "Off"}",
+                    subtitle = if (autoCacheEnabled) {
+                        "Every song you play saves offline"
+                    } else {
+                        "Songs will not auto-save"
+                    },
+                    icon = Icons.Rounded.AutoAwesome,
+                    iconTint = if (autoCacheEnabled) WearsicVibrantLavender else WearsicTextMuted,
+                    onClick = { onAutoCacheToggled(!autoCacheEnabled) },
+                    testTag = "settings_auto_cache"
+                )
             }
 
             // Cache Limit Pill

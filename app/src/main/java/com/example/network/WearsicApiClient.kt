@@ -1,5 +1,6 @@
 package com.example.network
 
+import com.example.network.model.AlbumDto
 import com.example.network.model.PlaylistDto
 import com.example.network.model.PlaylistWithTracksDto
 import com.example.network.model.SearchResponseDto
@@ -15,4 +16,14 @@ interface WearsicApiClient {
     suspend fun getPlaylists(baseUrl: String): Result<List<PlaylistDto>>
     suspend fun getPlaylistTracks(baseUrl: String, playlistId: String): Result<PlaylistWithTracksDto>
     suspend fun removeTrackFromPlaylist(baseUrl: String, playlistId: String, videoId: String): Result<Unit>
+
+    // Discovery & library expansion
+    suspend fun getSuggestions(baseUrl: String, query: String): Result<List<String>>
+    suspend fun getRelated(baseUrl: String, videoId: String): Result<List<TrackDto>>
+    suspend fun searchAlbums(baseUrl: String, query: String): Result<List<AlbumDto>>
+    suspend fun getPlaylistByUrl(baseUrl: String, url: String): Result<PlaylistWithTracksDto>
+
+    // Server-side playlists
+    suspend fun createPlaylist(baseUrl: String, name: String): Result<PlaylistDto>
+    suspend fun addTrackToPlaylist(baseUrl: String, playlistId: String, track: TrackDto): Result<Unit>
 }
