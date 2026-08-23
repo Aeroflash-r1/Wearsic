@@ -111,14 +111,6 @@ fun PlaylistsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     testTag = "playlists_favorites_button"
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "${playlistsState.favorites.size} favorite songs",
-                    color = WearsicVibrantLavender,
-                    fontSize = 10.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
             }
 
             // Loading state
