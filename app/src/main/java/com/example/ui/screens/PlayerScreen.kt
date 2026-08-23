@@ -569,6 +569,17 @@ private fun SecondaryActionsRow(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Audio Output / Volume
+        ActionCircle(
+            icon = if (isBluetoothConnected) Icons.Rounded.Headphones else Icons.Rounded.VolumeUp,
+            contentDescription = "Audio Output",
+            onClick = onOpenVolume,
+            iconTint = WearsicVibrantLavender,
+            testTag = "player_output_button"
+        )
+
+        Spacer(modifier = Modifier.width(12.dp))
+
         ActionCircle(
             icon = when {
                 isDownloading -> Icons.Rounded.HourglassEmpty
