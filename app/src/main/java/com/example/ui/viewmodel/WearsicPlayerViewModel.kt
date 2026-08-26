@@ -30,7 +30,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
@@ -211,7 +210,7 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
 
     // Lightweight client used only to pre-warm the server's stream cache for
     // the NEXT track in the queue, so it starts playing instantly.
-    private val warmUpClient = OkHttpClient.Builder()
+    private val warmUpClient = com.example.network.WearsicHttp.client.newBuilder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
@@ -246,8 +245,6 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
         viewModelScope.launch {
             val autoCachedTrackIds = mutableSetOf<String>()
             var lastTrack: Track? = null
-            var lastPositionMs = 0L
-            var lastDurationMs = 0L
 
             playbackController.uiState.collect { state ->
                 val track = state.currentTrack
@@ -273,8 +270,6 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
                         warmUpStream(nextTrack)
                     }
                 }
-                lastPositionMs = state.currentPositionMs
-                lastDurationMs = state.durationMs
             }
         }
     }
@@ -328,7 +323,9 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
         return try {
             val connectivityManager = getApplication<Application>()
                 .getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            connectivityManager.activeNetworkInfo?.isConnected == true
+            val network = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+            capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
         } catch (_: Exception) {
             true
         }
@@ -418,10 +415,13 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
     }
 
     /**
-     * Live search suggestions while typing (debounced 300 ms). Blank input
-     * clears them immediately.
+     * Live search suggestions while typing (debounced 300 ms). The raw text is
+     * mirrored into [SearchUiState.query] so the UI can bind to the ViewModel
+     * as its single source of truth (no local remember-mirror that fights the
+     * IME or drifts out of sync).
      */
     fun onSearchTextChanged(text: String) {
+        _searchState.update { it.copy(query = text) }
         suggestionsJob?.cancel()
         if (text.isBlank()) {
             _searchState.update { it.copy(suggestions = emptyList()) }

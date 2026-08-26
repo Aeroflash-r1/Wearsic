@@ -98,7 +98,9 @@ fun SearchScreen(
 ) {
     val listState = rememberScalingLazyListState()
     val keyboardController = LocalSoftwareKeyboardController.current
-    var typedQuery by remember(searchState.query) { mutableStateOf(searchState.query) }
+    // Single source of truth: the ViewModel state. The field writes straight
+    // back through onSearchTextChanged, so no local remember-mirror is needed.
+    val typedQuery = searchState.query
     var actionTrack by remember { mutableStateOf<Track?>(null) }
 
     // Wear keyboards are inconsistent: the enter key may fire onSearch, onDone
@@ -108,7 +110,7 @@ fun SearchScreen(
         val query = typedQuery.trim()
         if (query.isNotBlank()) {
             keyboardController?.hide()
-            onSearchTextChanged("")
+            // search(query) overwrites state.query, so no separate clear needed.
             onQuerySelected(query)
         }
     }
@@ -181,10 +183,7 @@ fun SearchScreen(
 
                             BasicTextField(
                                 value = typedQuery,
-                                onValueChange = {
-                                    typedQuery = it
-                                    onSearchTextChanged(it)
-                                },
+                                onValueChange = onSearchTextChanged,
                                 singleLine = true,
                                 textStyle = TextStyle(
                                     color = WearsicTextPrimary,
@@ -217,10 +216,10 @@ fun SearchScreen(
                                 modifier = Modifier
                                     .size(16.dp)
                                     .clip(CircleShape)
-                                    .clickable {
-                                        typedQuery = ""
-                                        onQuerySelected("")
-                                    }
+                            .clickable {
+                                onSearchTextChanged("")
+                                onQuerySelected("")
+                            }
                                     .testTag("search_clear_button")
                             )
                         }
@@ -240,12 +239,10 @@ fun SearchScreen(
                             .border(1.dp, WearsicGlassBorder, CircleShape)
                             .clickable {
                                 keyboardController?.hide()
-                                typedQuery = suggestion
                                 onQuerySelected(suggestion)
-                                onSearchTextChanged("")
                             }
                             .padding(horizontal = 12.dp, vertical = 8.dp)
-                            .testTag("search_suggestion_$index"),
+                            .testTag("search_suggestion_${suggestion.take(24)}"),
                         contentAlignment = Alignment.CenterStart
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {

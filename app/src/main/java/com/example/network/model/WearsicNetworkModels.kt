@@ -46,19 +46,15 @@ data class TrackDto(
     }
 
     fun toRequestBodyJson(): String {
-        return "{\"videoId\":\"${jsonEscape(id)}\"," +
-            "\"title\":\"${jsonEscape(title)}\"," +
-            "\"uploader\":\"${jsonEscape(artist)}\"," +
-            "\"durationMs\":$durationMs," +
-            "\"thumbnailUrl\":\"${jsonEscape(artworkUrl ?: "")}\"}"
-    }
-
-    private fun jsonEscape(value: String): String {
-        return value
-            .replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
+        // Built through JSONObject so every value is escaped correctly
+        // (control chars, tabs, unicode) instead of a hand-rolled string.
+        return org.json.JSONObject().apply {
+            put("videoId", id)
+            put("title", title)
+            put("uploader", artist)
+            put("durationMs", durationMs)
+            put("thumbnailUrl", artworkUrl ?: "")
+        }.toString()
     }
 }
 

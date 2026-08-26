@@ -244,11 +244,17 @@ fun QueueScreen(
                     )
                 }
 
-                // Up Next items
-                itemsIndexed(upcoming, key = { offset, _ -> "queue_item_$offset" }) { offset, track ->
+                // Up Next items. Keyed by ABSOLUTE queue position: relative
+                // offsets shift every time the current track advances or an
+                // item is removed, which would break lazy-item identity and
+                // reuse (items re-animate / state is lost on each advance).
+                itemsIndexed(
+                    upcoming,
+                    key = { offset, track -> "queue_${currentIndex + 1 + offset}_${track.id}" }
+                ) { offset, _ ->
                     val absoluteIndex = currentIndex + 1 + offset
                     QueueTrackItem(
-                        track = track,
+                        track = upcoming[offset],
                         onClick = { onPlayItem(absoluteIndex) },
                         onRemove = { onRemoveItem(absoluteIndex) }
                     )

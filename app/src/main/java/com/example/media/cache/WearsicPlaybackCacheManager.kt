@@ -80,12 +80,14 @@ object WearsicPlaybackCacheManager {
         // in onCreate blocks the MediaSession binder handshake on slow watches
         // and causes controller timeouts ("Unexpected IllegalStateException").
         val upstreamFactory = OkHttpDataSource.Factory(
-            okhttp3.OkHttpClient.Builder()
+            com.example.network.WearsicHttp.client.newBuilder()
                 .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
                 .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
                 .build()
         )
-            .setDefaultRequestProperties(mapOf("Range" to "bytes=0-"))
+        // No forced "Range: bytes=0-" header here: ExoPlayer issues its own
+        // Range requests for seeks and partial reads. Forcing one on every
+        // upstream request breaks strict servers and full-file responses.
 
         val cacheUpstreamFactory = DefaultDataSource.Factory(context, upstreamFactory)
         val appContext = context.applicationContext

@@ -47,6 +47,8 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -96,8 +98,7 @@ fun SettingsScreen(
 ) {
     val serverPresets = listOf(
         "http://10.0.2.2:8080",
-        "http://192.168.1.100:8080",
-        "https://tailscale-termux.tail702ad8.ts.net"
+        "http://192.168.1.100:8080"
     )
 
     val cacheLimits = listOf(16, 32, 64, 128)
@@ -449,8 +450,12 @@ fun SettingsScreen(
                             },
                             singleLine = true,
                             textStyle = TextStyle(color = WearsicTextPrimary, fontSize = 11.sp),
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(
+                                imeAction = ImeAction.Done,
+                                keyboardType = KeyboardType.Password
+                            ),
                             cursorBrush = SolidColor(WearsicVibrantLavender),
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                             modifier = Modifier.fillMaxWidth()
                         )
                     }

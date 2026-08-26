@@ -14,11 +14,28 @@ rebuild or extractor update.
 | 3 | `ExtractorService$streamTarget$2` | CONSTANT_Long entry `900000` → `21600000` | Stream URL cache TTL 15 min → 6 h = instant replays |
 | 4 | `Database` (method `deletePlaylistTrack`) | Full method body replaced (ASM, COMPUTE_FRAMES): `tid == "*"` now deletes the whole playlist row (FK cascades tracks) | Playlist deletion from the watch — the jar had no delete route/method |
 
+## Current application status (verified 2026-08-26)
+
+- **wearsic-server-termux-FIXED.zip** — patches 1–4 applied (canonical distributable).
+- **wearsic-server/lib/wearsic-server-1.0.0.jar** — patch 4 only; patches 1–3 are
+  NOT present in this copy (it still prefers audio/mp4 @128 kbps / 15-min TTL).
+  Re-apply 1–3 if this distro matters, or distribute only the FIXED zip.
+- The old stale root artifact `wearsic-server-1.0.0-PATCHED.jar` was removed
+  (it contained a partial patch set and was never referenced).
+
+Verify a jar's state:
+
+```bash
+unzip -p <jar> com/wearsic/server/Database.class | strings | grep -c "DELETE FROM playlists WHERE id"
+# 1 = patch 4 present, 0 = missing
+```
+
 Patch #2 note: growing a Utf8 entry shifts bytes but class files reference
 strings by index, so it is safe. Verify with javap afterwards.
 
 Patch #4 tool: `PatchDeletePlaylist.java` in this folder (compile against
-gradle-bundled asm-9.9.jar). Re-run on a fresh Database.class if you rebuild.
+ASM 9.x: `javac -cp asm-9.9.jar PatchDeletePlaylist.java`). Re-run on a fresh
+Database.class if you rebuild.
 
 ## Non-jar components shipped in wearsic-server-termux-FIXED.zip
 

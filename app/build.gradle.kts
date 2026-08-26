@@ -46,6 +46,14 @@ signingConfigs {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
+  // Run builds/tests on a JDK 21 toolchain (auto-provisioned by the foojay
+  // resolver): Robolectric's Android SDK 36 sandbox refuses to start on
+  // Java <= 20. Bytecode targets stay at Java 11 via compileOptions.
+  java {
+    toolchain {
+      languageVersion = JavaLanguageVersion.of(21)
+    }
+  }
   buildFeatures {
     compose = true
     buildConfig = true

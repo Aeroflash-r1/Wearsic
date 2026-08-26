@@ -6,7 +6,9 @@ import com.example.data.db.DownloadState
 import com.example.data.db.WearsicDatabase
 import com.example.data.db.WearsicDownloadEntity
 import com.example.model.Track
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import java.io.File
 
@@ -17,12 +19,13 @@ class WearsicDownloadRepository(
 
     val allDownloadsFlow: Flow<List<WearsicDownloadEntity>> = downloadDao.getAllDownloadsFlow()
 
+    // File existence checks are disk IO; keep them off the collector (main) thread.
     val completedTracksFlow: Flow<List<Track>> = downloadDao.getCompletedDownloadsFlow().map { entities ->
         entities.filter { entity ->
             val file = File(entity.localFilePath)
             file.exists() && file.length() > 0
         }.map { it.toDomainTrack() }
-    }
+    }.flowOn(Dispatchers.IO)
 
     fun getDownloadFlow(trackId: String): Flow<WearsicDownloadEntity?> {
         return downloadDao.getDownloadFlowById(trackId)

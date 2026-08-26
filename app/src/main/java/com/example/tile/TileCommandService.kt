@@ -1,6 +1,5 @@
 package com.example.tile
 
-import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Intent
 import androidx.media3.session.MediaController
@@ -71,16 +70,4 @@ class TileCommandService : android.app.Service() {
         controllerFuture = null
         super.onDestroy()
     }
-
-    private fun pendingIntent(action: String): PendingIntent =
-        PendingIntent.getService(
-            this,
-            action.hashCode(),
-            Intent(this, TileCommandService::class.java).setAction(action),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-    fun togglePendingIntent(): PendingIntent = pendingIntent(ACTION_TOGGLE)
-    fun prevPendingIntent(): PendingIntent = pendingIntent(ACTION_PREV)
-    fun nextPendingIntent(): PendingIntent = pendingIntent(ACTION_NEXT)
 }

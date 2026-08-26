@@ -3,6 +3,7 @@ package com.example.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -83,7 +84,11 @@ fun WearsicTrackActionSheet(
                 .background(WearsicGlassFill)
                 .border(1.dp, WearsicGlassBorder, CircleShape)
                 .padding(horizontal = 12.dp, vertical = 10.dp)
-                .clickable(enabled = false) {}, // block click-through
+                // Consume taps on the sheet body so they never reach the scrim.
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {},
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
@@ -117,17 +122,12 @@ fun WearsicTrackActionSheet(
                     SheetAction(Icons.Rounded.Close, "Back") { mode = "menu" }
                 }
                 else -> {
-                    var isFocused by remember { mutableStateOf(true) }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(CircleShape)
                             .background(Color.Black.copy(alpha = 0.35f))
-                            .border(
-                                1.dp,
-                                if (isFocused) WearsicVibrantLavenderCompat else WearsicGlassBorder,
-                                CircleShape
-                            )
+                            .border(1.dp, WearsicVibrantLavenderCompat, CircleShape)
                             .padding(horizontal = 12.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {

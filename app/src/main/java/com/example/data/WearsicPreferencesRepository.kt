@@ -27,7 +27,8 @@ class WearsicPreferencesRepository(private val context: Context) {
         val KEY_AUTO_CACHE_ENABLED = booleanPreferencesKey("auto_cache_enabled")
         val KEY_API_KEY = stringPreferencesKey("api_key")
         val KEY_HIDDEN_PLAYLISTS = stringSetPreferencesKey("hidden_playlists")
-        const val DEFAULT_SERVER_URL = "https://tailscale-termux.tail702ad8.ts.net"
+        /** No server is preconfigured; users enter their own URL in Settings. */
+        const val DEFAULT_SERVER_URL = ""
         const val DEFAULT_CACHE_LIMIT = 32
     }
 

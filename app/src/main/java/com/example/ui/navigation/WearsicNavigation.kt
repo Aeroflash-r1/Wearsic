@@ -1,9 +1,5 @@
 package com.example.ui.navigation
 
-import android.net.Uri
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue

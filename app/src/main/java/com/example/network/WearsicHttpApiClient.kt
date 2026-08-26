@@ -20,9 +20,9 @@ import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 class WearsicHttpApiClient(
-    private val client: OkHttpClient = OkHttpClient.Builder()
+    // Derived from the shared pool; only the faster connect timeout differs.
+    private val client: OkHttpClient = WearsicHttp.client.newBuilder()
         .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
         .build()
 ) : WearsicApiClient {
 

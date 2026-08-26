@@ -29,8 +29,8 @@ import kotlin.coroutines.coroutineContext
 class WearsicDownloadManager(
     private val context: Context,
     private val repository: WearsicDownloadRepository = WearsicDownloadRepository(context),
-    private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
+    // Derived from the shared pool; only the longer read timeout differs.
+    private val okHttpClient: OkHttpClient = com.example.network.WearsicHttp.client.newBuilder()
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 ) {

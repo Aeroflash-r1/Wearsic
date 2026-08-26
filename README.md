@@ -18,7 +18,7 @@ Wearsic adopts a clean, modular Model-View-ViewModel (MVVM) architecture with st
 [ WearsicPlaybackController ] <══> [ WearsicMediaService ] (MediaSession, ExoPlayer)
          │                                   │
          ▼                                   ▼
-[ WearsicDownloadManager ]          [ WearsicPlaybackCacheManager ] (128MB LRU Cache)
+[ WearsicDownloadManager ]          [ WearsicPlaybackCacheManager ] (32MB LRU Cache, configurable)
          │                                   │
          ▼                                   ▼
 [ WearsicDownloadRepository ]       [ Android Filesystem ]
@@ -30,7 +30,7 @@ Wearsic adopts a clean, modular Model-View-ViewModel (MVVM) architecture with st
 
 ### 1. Presentation & Interaction (Jetpack Compose for Wear OS)
 - **Rotary Scroll Input**: Uses a dedicated, zero-allocation custom `wearsicRotaryScroll()` modifier leveraging `FocusRequester` and `dispatchRawDelta` to translate physical crown and touch bezel movements directly into list movements and player seeks.
-- **Watch-First Touch Targets**: Play/pause target size is 58dp; skip/prev targets are 44dp; secondary and volume steps are 38dp+. All interactive boundaries meet or exceed the Android Accessibility standards.
+- **Watch-First Touch Targets**: Primary play/pause and transport controls meet the 48dp Wear OS guideline (`WearsicCircularIconButton`, blob pod 84dp); some secondary inline row actions are intentionally smaller (26–38dp) to keep dense lists usable.
 - **Material Design 3 (Vibrant Palette)**: Deep black background (`#000000`), dark charcoal surfaces (`#1C1B1F`), and high-contrast Lavender accents (`#D0BCFF`).
 
 ### 2. Playback Foundation (AndroidX Media3)
@@ -54,39 +54,36 @@ Wearsic adopts a clean, modular Model-View-ViewModel (MVVM) architecture with st
 This client is fully hardened to support any standard Ktor/OkHttp endpoint following the schema below.
 
 ### 1. Health Verification
-- **Route**: `GET /api/v1/health`
+- **Route**: `GET /health`
 - **Response Model**:
 ```json
 {
   "status": "ok",
-  "version": "1.0",
-  "serverName": "Wearsic Ktor Engine"
+  "version": "1.0.0",
+  "serverName": "Wearsic Engine"
 }
 ```
 
 ### 2. Music Search
-- **Route**: `GET /api/v1/search?q={query}`
-- **Response Model**:
+- **Route**: `GET /api/search?q={query}`
+- **Response Model** (the client derives stream URLs as `{server}/api/stream/{videoId}`):
 ```json
 {
-  "query": "Crowded House",
-  "tracks": [
+  "results": [
     {
-      "id": "track_1",
+      "videoId": "track_1",
       "title": "Weather with You",
-      "artist": "Crowded House",
-      "album": "Woodface",
-      "artworkUrl": "https://wearsic.server.internal/artwork/track_1.jpg",
+      "uploader": "Crowded House",
       "durationMs": 240000,
-      "streamUrl": "https://wearsic.server.internal/api/v1/stream/track_1"
+      "thumbnailUrl": "https://i.ytimg.com/vi/.../default.jpg"
     }
   ]
 }
 ```
 
 ### 3. Media Stream
-- **Route**: `GET /api/v1/stream/{trackId}`
-- **Response Stream**: Returns standard `audio/mpeg` or `audio/aac` media streams with support for HTTP range requests.
+- **Route**: `GET /api/stream/{videoId}`
+- **Response Stream**: Returns `audio/mp4`, `audio/webm`, or `audio/mpeg` media streams with support for HTTP range requests.
 
 ---
 
@@ -136,10 +133,42 @@ For the detailed endpoints, JSON schemas, payload fields, and streaming compatib
 
 ### Compile Project
 ```bash
-gradle assembleDebug
+./gradlew assembleDebug
 ```
 
 ### Run Robolectric Unit & Integration Test Suite
 ```bash
-gradle :app:testDebugUnitTest
+./gradlew :app:testDebugUnitTest
+```
+
+---
+
+## 🤖 CI / Releases (GitHub Actions)
+
+`.github/workflows/android.yml` runs on every push/PR:
+
+1. **test** — Robolectric unit test suite.
+2. **build-debug** — unsigned debug APK uploaded as a workflow artifact.
+3. **release** *(tag pushes only, `v*`)* — signed release APK attached to a
+   GitHub Release.
+
+One-time setup for releases — add these repository **secrets**:
+
+| Secret | Value |
+|---|---|
+| `KEYSTORE_BASE64` | `base64 -w0 my-upload-key.jks` output |
+| `STORE_PASSWORD` | Keystore password |
+| `KEY_PASSWORD` | Key password |
+
+Create a keystore locally with:
+
+```bash
+keytool -genkeypair -v -keystore my-upload-key.jks -alias upload \
+  -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Then cut a release:
+
+```bash
+git tag v1.0.1 && git push origin v1.0.1
 ```
