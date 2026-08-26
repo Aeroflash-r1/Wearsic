@@ -17,3 +17,6 @@ local.properties
 .env
 debug.keystore
 my-upload-key.jks
+
+# Signing material - never commit
+KEYSTORE_BASE64.txt
