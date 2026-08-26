@@ -118,10 +118,11 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease --stacktrace
 
-      - name: Stage release APK
+      - name: Stage release assets
         run: |
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk "dist/Wearsic-${GITHUB_REF_NAME}.apk"
+          cp wearsic-server-termux-FIXED.zip "dist/wearsic-server-termux-FIXED.zip"
 
       - name: Create GitHub Release
         env:
@@ -130,4 +131,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --title "Wearsic $GITHUB_REF_NAME" \
             --generate-notes \
-            "dist/Wearsic-${GITHUB_REF_NAME}.apk"
+            "dist/Wearsic-${GITHUB_REF_NAME}.apk" \
+            "dist/wearsic-server-termux-FIXED.zip"
