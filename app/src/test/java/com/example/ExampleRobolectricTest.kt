@@ -5,9 +5,12 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.core.app.ApplicationProvider
@@ -221,11 +224,20 @@ class ExampleRobolectricTest {
         
         // Wait for Datastore state flow emissions and layout transition to settle
         composeTestRule.waitForIdle()
-        
+
         composeTestRule.onNodeWithText("Server & Storage", useUnmergedTree = true).assertExists()
 
         // Test server URL and cache limit UI elements
         composeTestRule.onNodeWithTag("settings_server_url", useUnmergedTree = true).assertExists()
+
+        // The Offline Audio section sits between the URL field and the cache
+        // limit pill; scroll down so the lower pills enter the lazy viewport.
+        repeat(2) {
+            composeTestRule.onRoot().performTouchInput { swipeUp() }
+            composeTestRule.waitForIdle()
+        }
+
+        composeTestRule.onNodeWithTag("settings_offline_limit", useUnmergedTree = true).assertExists()
         composeTestRule.onNodeWithTag("settings_cache_limit", useUnmergedTree = true).assertExists()
     }
 

@@ -41,8 +41,12 @@ class WearsicDownloadManager(
     companion object {
         private const val DOWNLOAD_DIR_NAME = "wearsic_downloads"
         private const val MIN_REQUIRED_STORAGE_BYTES = 15L * 1024L * 1024L // 15 MB
-        private const val MAX_AUTO_CACHED_TRACKS = 15
     }
+
+    /** How many auto-cached songs to keep; evicted oldest-first. Configurable
+     *  from Settings ("Offline Audio"), synced by the ViewModel. */
+    @Volatile
+    var maxAutoCachedTracks: Int = 15
 
     val allDownloadsFlow = repository.allDownloadsFlow
     val completedTracksFlow = repository.completedTracksFlow
@@ -218,7 +222,7 @@ class WearsicDownloadManager(
     private suspend fun evictOldAutoCachedTracks() {
         try {
             repository.getAutoCachedCompleted()
-                .drop(MAX_AUTO_CACHED_TRACKS)
+                .drop(maxAutoCachedTracks)
                 .forEach { entity ->
                     repository.deleteDownload(entity.trackId)
                 }

@@ -169,6 +169,17 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
     val autoCacheEnabled: StateFlow<Boolean> = preferencesRepository.autoCacheEnabledFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    /** How many auto-cached (offline) songs to keep before oldest-first eviction. */
+    val offlineLimit: StateFlow<Int> = preferencesRepository.offlineLimitFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), WearsicPreferencesRepository.DEFAULT_OFFLINE_LIMIT)
+
+    fun saveOfflineLimit(limitSongs: Int) {
+        downloadManager.maxAutoCachedTracks = limitSongs.coerceIn(5, 200)
+        viewModelScope.launch {
+            preferencesRepository.saveOfflineLimit(limitSongs)
+        }
+    }
+
     private val _connectionTestState = MutableStateFlow<ConnectionTestState>(ConnectionTestState.Idle)
     val connectionTestState: StateFlow<ConnectionTestState> = _connectionTestState.asStateFlow()
 
@@ -229,6 +240,12 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
                 hiddenPlaylistIds = hidden
                 // Re-filter already-loaded playlists instantly.
                 _playlistsState.update { it.copy(playlists = it.playlists.filter { pl -> pl.id !in hidden }) }
+            }
+        }
+        // Apply the persisted offline-song limit to the download manager.
+        viewModelScope.launch {
+            preferencesRepository.offlineLimitFlow.collect { limit ->
+                downloadManager.maxAutoCachedTracks = limit.coerceIn(5, 200)
             }
         }
         // No cache setup at startup: the cache limit defaults to 128MB and the

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.SdStorage
@@ -92,6 +93,8 @@ fun SettingsScreen(
     onOpenStorage: () -> Unit = {},
     autoCacheEnabled: Boolean = true,
     onAutoCacheToggled: (Boolean) -> Unit = {},
+    offlineLimitSongs: Int = 15,
+    onOfflineLimitChanged: (Int) -> Unit = {},
     onCleanCache: (onResult: (Long) -> Unit) -> Unit = { onResult -> onResult(0L) },
     onClearDownloads: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -487,19 +490,47 @@ fun SettingsScreen(
                 }
             }
 
+            // ── Offline Audio ────────────────────────────────────────────
+            item {
+                Text(
+                    text = "Offline Audio",
+                    color = WearsicVibrantLavender,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+
             // Auto-Cache Toggle Pill
             item {
                 SettingsPillItem(
-                    title = "Auto-Cache Songs: ${if (autoCacheEnabled) "On" else "Off"}",
+                    title = "Auto-Save Songs: ${if (autoCacheEnabled) "On" else "Off"}",
                     subtitle = if (autoCacheEnabled) {
-                        "Every song you play saves offline"
+                        "Every song you play saves for offline"
                     } else {
-                        "Songs will not auto-save"
+                        "Songs will not be saved offline"
                     },
                     icon = Icons.Rounded.AutoAwesome,
                     iconTint = if (autoCacheEnabled) WearsicVibrantLavender else WearsicTextMuted,
                     onClick = { onAutoCacheToggled(!autoCacheEnabled) },
                     testTag = "settings_auto_cache"
+                )
+            }
+
+            // Offline song limit Pill
+            item {
+                val offlineLimits = listOf(15, 30, 50, 100)
+                SettingsPillItem(
+                    title = "Keep ${offlineLimitSongs} Songs Offline",
+                    subtitle = "Tap to cycle · oldest removed first",
+                    icon = Icons.Rounded.DownloadDone,
+                    iconTint = WearsicVibrantLavender,
+                    onClick = {
+                        val idx = offlineLimits.indexOf(offlineLimitSongs)
+                        val next = offlineLimits[(idx + 1).coerceAtLeast(0) % offlineLimits.size]
+                        onOfflineLimitChanged(next)
+                    },
+                    testTag = "settings_offline_limit"
                 )
             }
 

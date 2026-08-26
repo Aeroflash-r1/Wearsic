@@ -27,9 +27,11 @@ class WearsicPreferencesRepository(private val context: Context) {
         val KEY_AUTO_CACHE_ENABLED = booleanPreferencesKey("auto_cache_enabled")
         val KEY_API_KEY = stringPreferencesKey("api_key")
         val KEY_HIDDEN_PLAYLISTS = stringSetPreferencesKey("hidden_playlists")
+        val KEY_OFFLINE_LIMIT = intPreferencesKey("offline_song_limit")
         /** No server is preconfigured; users enter their own URL in Settings. */
         const val DEFAULT_SERVER_URL = ""
         const val DEFAULT_CACHE_LIMIT = 32
+        const val DEFAULT_OFFLINE_LIMIT = 15
     }
 
     val serverUrlFlow: Flow<String> = context.dataStore.data
@@ -72,6 +74,18 @@ class WearsicPreferencesRepository(private val context: Context) {
     suspend fun setAutoCacheEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[KEY_AUTO_CACHE_ENABLED] = enabled
+        }
+    }
+
+    val offlineLimitFlow: Flow<Int> = context.dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { preferences ->
+            preferences[KEY_OFFLINE_LIMIT] ?: DEFAULT_OFFLINE_LIMIT
+        }
+
+    suspend fun saveOfflineLimit(limitSongs: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_OFFLINE_LIMIT] = limitSongs.coerceIn(5, 200)
         }
     }
 

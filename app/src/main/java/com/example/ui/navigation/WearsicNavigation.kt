@@ -57,6 +57,7 @@ fun WearsicApp(
     val connectionTestState by playerViewModel.connectionTestState.collectAsStateWithLifecycle()
     val downloads by playerViewModel.downloads.collectAsStateWithLifecycle()
     val autoCacheEnabled by playerViewModel.autoCacheEnabled.collectAsStateWithLifecycle()
+    val offlineLimit by playerViewModel.offlineLimit.collectAsStateWithLifecycle()
     val radioState by playerViewModel.radioState.collectAsStateWithLifecycle()
     val apiKey by playerViewModel.apiKey.collectAsStateWithLifecycle()
     val storageStats by playerViewModel.storageStats.collectAsStateWithLifecycle()
@@ -247,6 +248,10 @@ fun WearsicApp(
                     autoCacheEnabled = autoCacheEnabled,
                     onAutoCacheToggled = { enabled ->
                         playerViewModel.setAutoCacheEnabled(enabled)
+                    },
+                    offlineLimitSongs = offlineLimit,
+                    onOfflineLimitChanged = { limit ->
+                        playerViewModel.saveOfflineLimit(limit)
                     },
                     onCleanCache = { onResult ->
                         playerViewModel.cleanPlaybackCache(onResult)
