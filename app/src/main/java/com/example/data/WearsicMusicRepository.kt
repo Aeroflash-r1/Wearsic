@@ -19,9 +19,10 @@ class WearsicMusicRepository(
 
     val serverUrlFlow = preferencesRepository.serverUrlFlow
 
-    /** Pushes the stored API key into the HTTP client. */
+    /** Pushes the stored API key into the shared HTTP client so every
+     *  request (API, media streams, downloads) carries it. */
     suspend fun refreshApiKeyWith(key: String) {
-        (httpApiClient as? WearsicHttpApiClient)?.currentApiKey = key
+        com.example.network.WearsicHttp.apiKey = key.trim()
     }
 
     suspend fun saveApiKey(key: String) {

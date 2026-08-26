@@ -21,17 +21,11 @@ import java.util.concurrent.TimeUnit
 
 class WearsicHttpApiClient(
     // Derived from the shared pool; only the faster connect timeout differs.
+    // Auth (X-Wearsic-Key) is injected centrally by WearsicHttp.
     private val client: OkHttpClient = WearsicHttp.client.newBuilder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .build()
 ) : WearsicApiClient {
-
-    /** Updated by the repository whenever the user edits their API key. */
-    @Volatile
-    var currentApiKey: String = ""
-
-    private fun Request.Builder.withApiKey(): Request.Builder =
-        if (currentApiKey.isBlank()) this else header("X-Wearsic-Key", currentApiKey)
 
     override suspend fun checkHealth(baseUrl: String): Result<ServerHealthDto> = withContext(Dispatchers.IO) {
         val trimmed = baseUrl.trim()
@@ -45,7 +39,6 @@ class WearsicHttpApiClient(
             val request = Request.Builder()
                 .url(healthUrl)
                 .get()
-                .withApiKey()
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -86,7 +79,6 @@ class WearsicHttpApiClient(
             val request = Request.Builder()
                 .url(searchUrl)
                 .get()
-                .withApiKey()
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -123,7 +115,6 @@ class WearsicHttpApiClient(
             val request = Request.Builder()
                 .url("$sanitizedUrl/api/favorites")
                 .get()
-                .withApiKey()
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -145,7 +136,6 @@ class WearsicHttpApiClient(
             val request = Request.Builder()
                 .url("$sanitizedUrl/api/favorites")
                 .post(track.toRequestBodyJson().toRequestBody(JSON_MEDIA_TYPE))
-                .withApiKey()
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -166,7 +156,6 @@ class WearsicHttpApiClient(
             val request = Request.Builder()
                 .url("$sanitizedUrl/api/favorites/${URLEncoder.encode(videoId, "UTF-8")}")
                 .delete()
-                .withApiKey()
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -187,7 +176,6 @@ class WearsicHttpApiClient(
             val request = Request.Builder()
                 .url("$sanitizedUrl/api/playlists")
                 .get()
-                .withApiKey()
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -224,7 +212,6 @@ class WearsicHttpApiClient(
             val request = Request.Builder()
                 .url("$sanitizedUrl/api/playlists/${URLEncoder.encode(playlistId, "UTF-8")}")
                 .get()
-                .withApiKey()
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -253,7 +240,6 @@ class WearsicHttpApiClient(
             val request = Request.Builder()
                 .url("$sanitizedUrl/api/playlists/${URLEncoder.encode(playlistId, "UTF-8")}/tracks/${URLEncoder.encode(videoId, "UTF-8")}")
                 .delete()
-                .withApiKey()
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -276,7 +262,6 @@ class WearsicHttpApiClient(
                 val request = Request.Builder()
                     .url("$sanitizedUrl/api/suggestions?q=${URLEncoder.encode(query, "UTF-8")}")
                     .get()
-                    .withApiKey()
                     .build()
 
                 client.newCall(request).execute().use { response ->
@@ -302,7 +287,6 @@ class WearsicHttpApiClient(
                 val request = Request.Builder()
                     .url("$sanitizedUrl/api/related/${URLEncoder.encode(videoId, "UTF-8")}")
                     .get()
-                    .withApiKey()
                     .build()
 
                 client.newCall(request).execute().use { response ->
@@ -326,7 +310,6 @@ class WearsicHttpApiClient(
                 val request = Request.Builder()
                     .url("$sanitizedUrl/api/search/albums?q=${URLEncoder.encode(query, "UTF-8")}")
                     .get()
-                    .withApiKey()
                     .build()
 
                 client.newCall(request).execute().use { response ->
@@ -362,7 +345,6 @@ class WearsicHttpApiClient(
                 val request = Request.Builder()
                     .url("$sanitizedUrl/api/playlist?url=${URLEncoder.encode(url, "UTF-8")}")
                     .get()
-                    .withApiKey()
                     .build()
 
                 client.newCall(request).execute().use { response ->
@@ -392,7 +374,6 @@ class WearsicHttpApiClient(
                 val request = Request.Builder()
                     .url("$sanitizedUrl/api/playlists")
                     .post(body)
-                    .withApiKey()
                     .build()
 
                 client.newCall(request).execute().use { response ->
@@ -422,7 +403,6 @@ class WearsicHttpApiClient(
                 val request = Request.Builder()
                     .url("$sanitizedUrl/api/playlists/${URLEncoder.encode(playlistId, "UTF-8")}/tracks")
                     .post(track.toRequestBodyJson().toRequestBody(JSON_MEDIA_TYPE))
-                    .withApiKey()
                     .build()
 
                 client.newCall(request).execute().use { response ->
