@@ -23,7 +23,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -106,14 +106,14 @@ fun WearsicTrackActionSheet(
             when (mode) {
                 "menu" -> {
                     SheetAction(Icons.Rounded.PlayArrow, "Play now") { onDismiss(); onPlay() }
-                    SheetAction(Icons.Rounded.QueueMusic, "Queue next") { onDismiss(); onQueue() }
+                    SheetAction(Icons.AutoMirrored.Rounded.QueueMusic, "Queue next") { onDismiss(); onQueue() }
                     SheetAction(Icons.Rounded.Add, "To playlist") { mode = "pick" }
                     SheetAction(Icons.Rounded.Download, "Download") { onDismiss(); onDownload() }
                     SheetAction(Icons.Rounded.Close, "Close") { onDismiss() }
                 }
                 "pick" -> {
                     playlists.forEach { playlist ->
-                        SheetAction(Icons.Rounded.QueueMusic, playlist.name) {
+                        SheetAction(Icons.AutoMirrored.Rounded.QueueMusic, playlist.name) {
                             onDismiss()
                             onAddToPlaylist(playlist.id)
                         }

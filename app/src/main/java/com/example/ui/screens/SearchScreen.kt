@@ -29,7 +29,7 @@ import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -218,7 +218,6 @@ fun SearchScreen(
                                     .clip(CircleShape)
                             .clickable {
                                 onSearchTextChanged("")
-                                onQuerySelected("")
                             }
                                     .testTag("search_clear_button")
                             )
@@ -455,7 +454,7 @@ private fun SearchTrackItem(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.QueueMusic,
+                        imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
                         contentDescription = "Add to Queue",
                         tint = WearsicTextMuted,
                         modifier = Modifier.size(13.dp)

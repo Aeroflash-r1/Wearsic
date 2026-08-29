@@ -23,7 +23,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Remove
-import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -188,34 +188,55 @@ fun VolumeScreen(
             // Sleep Timer Chips
             item {
                 val options = listOf(15, 30, 45, 60)
+                val activeMinutes = if (sleepRemainingMs > 0) (sleepRemainingMs / 60000).toInt() else 0
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         options.forEach { mins ->
+                            val isActive = sleepRemainingMs > 0 && activeMinutes in (mins - 14)..mins
                             Box(
                                 modifier = Modifier
                                     .clip(CircleShape)
-                                    .background(WearsicSurface)
-                                    .border(1.dp, WearsicVibrantLavender.copy(alpha = 0.4f), CircleShape)
+                                    .background(
+                                        if (isActive) WearsicVibrantLavender.copy(alpha = 0.25f)
+                                        else WearsicSurface
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (isActive) WearsicVibrantLavender else WearsicVibrantLavender.copy(alpha = 0.4f),
+                                        CircleShape
+                                    )
                                     .clickable { onSleepTimerSet(mins) }
                                     .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Text(
                                     text = "${mins}m",
-                                    color = WearsicTextPrimary,
+                                    color = if (isActive) WearsicVibrantLavender else WearsicTextPrimary,
                                     fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
+                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
                                 )
                             }
                         }
                         Box(
                             modifier = Modifier
                                 .clip(CircleShape)
-                                .background(WearsicSurface)
-                                .border(1.dp, WearsicGlassBorder, CircleShape)
+                                .background(
+                                    if (sleepRemainingMs == 0L) WearsicSurfaceActive
+                                    else WearsicSurface
+                                )
+                                .border(
+                                    1.dp,
+                                    if (sleepRemainingMs == 0L) WearsicVibrantLavender else WearsicGlassBorder,
+                                    CircleShape
+                                )
                                 .clickable { onSleepTimerSet(0) }
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
-                            Text("Off", color = WearsicTextMuted, fontSize = 11.sp)
+                            Text(
+                                "Off",
+                                color = if (sleepRemainingMs == 0L) WearsicVibrantLavender else WearsicTextMuted,
+                                fontSize = 11.sp,
+                                fontWeight = if (sleepRemainingMs == 0L) FontWeight.Bold else FontWeight.Medium
+                            )
                         }
                     }
                     if (sleepRemainingMs > 0) {
@@ -233,7 +254,7 @@ fun VolumeScreen(
             item {
                 OutputDeviceOptionPill(
                     name = "Watch Speaker",
-                    icon = Icons.Rounded.VolumeUp,
+                    icon = Icons.AutoMirrored.Rounded.VolumeUp,
                     isSelected = selectedOutput == "Watch Speaker",
                     onClick = {
                         selectedOutput = "Watch Speaker"

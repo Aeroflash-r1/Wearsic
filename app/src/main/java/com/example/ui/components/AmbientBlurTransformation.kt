@@ -15,6 +15,7 @@ class AmbientBlurTransformation(
 
     override val cacheKey: String = "ambient-blur-$scaleFactor"
 
+    @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
     override suspend fun transform(source: Bitmap, size: Size): Bitmap {
         val w = maxOf(1, source.width / scaleFactor)
         val h = maxOf(1, source.height / scaleFactor)

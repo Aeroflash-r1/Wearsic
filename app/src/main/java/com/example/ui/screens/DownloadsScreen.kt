@@ -21,9 +21,9 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.HourglassEmpty
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -75,6 +75,7 @@ fun DownloadsScreen(
     onPlayTrack: (Track) -> Unit,
     onDeleteDownload: (String) -> Unit,
     onCancelDownload: (String) -> Unit,
+    onRetryDownload: (Track) -> Unit = {},
     onClearAllDownloads: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -159,6 +160,7 @@ fun DownloadsScreen(
                     DownloadState.FAILED.name -> {
                         FailedDownloadItemCard(
                             entity = item,
+                            onRetry = { onRetryDownload(item.toDomainTrack()) },
                             onDelete = { onDeleteDownload(item.trackId) }
                         )
                     }
@@ -446,6 +448,7 @@ private fun DownloadingItemCard(
 @Composable
 private fun FailedDownloadItemCard(
     entity: WearsicDownloadEntity,
+    onRetry: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -492,20 +495,44 @@ private fun FailedDownloadItemCard(
                 }
             }
 
-            Box(
-                modifier = Modifier
-                    .size(26.dp)
-                    .clip(CircleShape)
-                    .background(WearsicSurface)
-                    .clickable(onClick = onDelete),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Delete,
-                    contentDescription = "Remove",
-                    tint = WearsicError,
-                    modifier = Modifier.size(14.dp)
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Retry button
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(WearsicVibrantLavender.copy(alpha = 0.15f))
+                        .border(1.dp, WearsicVibrantLavender.copy(alpha = 0.4f), CircleShape)
+                        .clickable(onClick = onRetry)
+                        .testTag("retry_download_${entity.trackId}"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Download,
+                        contentDescription = "Retry",
+                        tint = WearsicVibrantLavender,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                // Delete button
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(WearsicSurface)
+                        .clickable(onClick = onDelete),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Delete,
+                        contentDescription = "Remove",
+                        tint = WearsicError,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
             }
         }
     }

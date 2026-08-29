@@ -24,7 +24,7 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
@@ -184,7 +184,7 @@ fun LibraryScreen(
                 ) {
                     WearsicSecondaryPillButton(
                         label = "Playlists",
-                        icon = Icons.Rounded.QueueMusic,
+                        icon = Icons.AutoMirrored.Rounded.QueueMusic,
                         onClick = onNavigateToPlaylists,
                         modifier = Modifier.weight(1f),
                         testTag = "library_playlists_button"

@@ -80,6 +80,15 @@ fun AlbumsScreen(
     val listState = rememberScalingLazyListState()
     val keyboardController = LocalSoftwareKeyboardController.current
     var typed by remember(albumsState.query) { mutableStateOf(albumsState.query) }
+    var debouncedQuery by remember { mutableStateOf("") }
+
+    // Debounce: fire search 400ms after the user stops typing.
+    LaunchedEffect(debouncedQuery) {
+        if (debouncedQuery.isNotBlank()) {
+            kotlinx.coroutines.delay(400)
+            onQueryChanged(debouncedQuery.trim())
+        }
+    }
 
     // Wear keyboards fire different enter actions; handle all and dismiss so
     // results appear immediately.
@@ -136,7 +145,7 @@ fun AlbumsScreen(
                             value = typed,
                             onValueChange = {
                                 typed = it
-                                onQueryChanged(it)
+                                debouncedQuery = it
                             },
                             singleLine = true,
                             textStyle = TextStyle(color = WearsicTextPrimary, fontSize = 12.sp),

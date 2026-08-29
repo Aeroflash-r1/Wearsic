@@ -32,10 +32,10 @@ import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
-import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -570,7 +570,7 @@ private fun SecondaryActionsRow(
     ) {
         // Audio Output / Volume
         ActionCircle(
-            icon = if (isBluetoothConnected) Icons.Rounded.Headphones else Icons.Rounded.VolumeUp,
+            icon = if (isBluetoothConnected) Icons.Rounded.Headphones else Icons.AutoMirrored.Rounded.VolumeUp,
             contentDescription = "Audio Output",
             onClick = onOpenVolume,
             iconTint = WearsicVibrantLavender,
@@ -612,7 +612,7 @@ private fun SecondaryActionsRow(
         Spacer(modifier = Modifier.width(12.dp))
 
         ActionCircle(
-            icon = Icons.Rounded.QueueMusic,
+            icon = Icons.AutoMirrored.Rounded.QueueMusic,
             contentDescription = "Queue",
             onClick = onOpenQueue,
             iconTint = if (hasUpNext) WearsicVibrantLavender else WearsicTextMuted,

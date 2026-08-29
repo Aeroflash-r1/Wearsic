@@ -21,7 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.HourglassEmpty
-import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -70,11 +70,14 @@ fun PlaylistsScreen(
     onRefresh: () -> Unit,
     onNavigateToFavorites: () -> Unit,
     onOpenPlaylist: (Playlist) -> Unit,
+    onCreatePlaylist: (String) -> Unit = {},
     onRemovePlaylist: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val listState = rememberScalingLazyListState()
     var hideCandidate by remember { mutableStateOf<Playlist?>(null) }
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var newPlaylistName by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         onRefresh()
@@ -110,6 +113,17 @@ fun PlaylistsScreen(
                     onClick = onNavigateToFavorites,
                     modifier = Modifier.fillMaxWidth(),
                     testTag = "playlists_favorites_button"
+                )
+            }
+
+            // Create Playlist action
+            item {
+                WearsicSecondaryPillButton(
+                    label = "Create Playlist",
+                    icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                    onClick = { showCreateDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    testTag = "playlists_create_button"
                 )
             }
 
@@ -181,6 +195,90 @@ fun PlaylistsScreen(
             }
         }
 
+        // Create Playlist dialog
+        if (showCreateDialog) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .clickable { showCreateDialog = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .clip(CircleShape)
+                        .background(WearsicSurface)
+                        .border(1.dp, WearsicVibrantLavender.copy(alpha = 0.5f), CircleShape)
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                ) {
+                    Text(
+                        text = "New Playlist",
+                        color = WearsicTextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.35f))
+                            .border(1.dp, WearsicVibrantLavender.copy(alpha = 0.4f), CircleShape)
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = newPlaylistName,
+                            onValueChange = { newPlaylistName = it },
+                            singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                color = WearsicTextPrimary,
+                                fontSize = 12.sp
+                            ),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(WearsicVibrantLavender),
+                            modifier = Modifier.fillMaxWidth(),
+                            decorationBox = { innerTextField ->
+                                if (newPlaylistName.isEmpty()) {
+                                    Text("Playlist name...", color = WearsicTextMuted, fontSize = 12.sp)
+                                }
+                                innerTextField()
+                            }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(WearsicVibrantLavender)
+                                .clickable {
+                                    val name = newPlaylistName.trim()
+                                    if (name.isNotBlank()) {
+                                        onCreatePlaylist(name)
+                                        newPlaylistName = ""
+                                        showCreateDialog = false
+                                    }
+                                }
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Text("Create", color = WearsicTextPrimaryDark, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(WearsicGlassFill)
+                                .border(1.dp, WearsicGlassBorder, CircleShape)
+                                .clickable { showCreateDialog = false; newPlaylistName = "" }
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Text("Cancel", color = WearsicTextPrimary, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+
         // Hide confirmation overlay
         hideCandidate?.let { pl ->
             Box(
@@ -246,6 +344,7 @@ private fun PlaylistRow(
     modifier: Modifier = Modifier,
     onLongPress: () -> Unit = {}
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -260,19 +359,33 @@ private fun PlaylistRow(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(30.dp)
-                    .clip(CircleShape)
-                    .background(WearsicLavenderContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.QueueMusic,
-                    contentDescription = null,
-                    tint = WearsicVibrantLavender,
-                    modifier = Modifier.size(16.dp)
+            if (!playlist.thumbnailUrl.isNullOrBlank()) {
+                coil.compose.AsyncImage(
+                    model = coil.request.ImageRequest.Builder(context)
+                        .data(playlist.thumbnailUrl)
+                        .size(120)
+                        .build(),
+                    contentDescription = playlist.name,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(WearsicLavenderContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
+                        contentDescription = null,
+                        tint = WearsicVibrantLavender,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(10.dp))
@@ -296,7 +409,7 @@ private fun PlaylistRow(
             }
 
             Icon(
-                imageVector = Icons.Rounded.QueueMusic,
+                imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
                 contentDescription = null,
                 tint = WearsicTextMuted,
                 modifier = Modifier.size(16.dp)

@@ -298,6 +298,10 @@ fun WearsicApp(
                     onCancelDownload = { trackId ->
                         playerViewModel.cancelDownload(trackId)
                     },
+                    onRetryDownload = { track ->
+                        playerViewModel.deleteDownload(track.id)
+                        playerViewModel.startDownload(track)
+                    },
                     onClearAllDownloads = {
                         playerViewModel.clearAllDownloads()
                     }
@@ -329,6 +333,9 @@ fun WearsicApp(
                     },
                     onOpenPlaylist = { playlist ->
                         navController.navigate(Screen.PlaylistDetail.createRoute(playlist.id, playlist.name))
+                    },
+                    onCreatePlaylist = { name ->
+                        playerViewModel.createPlaylistAndAdd(name, null)
                     },
                     onRemovePlaylist = { id ->
                         playerViewModel.removePlaylist(id)

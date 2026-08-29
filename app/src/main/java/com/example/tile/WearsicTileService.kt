@@ -42,15 +42,6 @@ class WearsicTileService : TileService() {
                 .build()
         }
 
-        val title = LayoutElementBuilders.Text.Builder()
-            .setText("Wearsic")
-            .setFontStyle(
-                LayoutElementBuilders.FontStyle.Builder()
-                    .setSize(DimensionBuilders.sp(14f))
-                    .build()
-            )
-            .build()
-
         val row = LayoutElementBuilders.Row.Builder()
             .addContent(controlText("  ◀  ", "prev"))
             .addContent(controlText("  ▶  ", "toggle"))
@@ -58,7 +49,6 @@ class WearsicTileService : TileService() {
             .build()
 
         val column = LayoutElementBuilders.Box.Builder()
-            .addContent(title)
             .addContent(row)
             .setWidth(DimensionBuilders.expand())
             .setHeight(DimensionBuilders.expand())
