@@ -99,11 +99,6 @@ fun SettingsScreen(
     onClearDownloads: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val serverPresets = listOf(
-        "http://10.0.2.2:8080",
-        "http://192.168.1.100:8080"
-    )
-
     val cacheLimits = listOf(16, 32, 64, 128)
     var currentCacheLimitIndex by remember {
         val idx = cacheLimits.indexOf(cacheLimitMb)
@@ -243,62 +238,6 @@ fun SettingsScreen(
                                     .testTag("settings_server_url_clear")
                             )
                         }
-                    }
-                }
-            }
-
-            // Quick-fill Preset Chips
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(CircleShape)
-                            .background(WearsicSurface)
-                            .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
-                            .clickable {
-                                onServerUrlChanged(serverPresets[0])
-                            }
-                            .padding(vertical = 6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("Emulator", color = WearsicTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(CircleShape)
-                            .background(WearsicSurface)
-                            .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
-                            .clickable {
-                                onServerUrlChanged(serverPresets[1])
-                            }
-                            .padding(vertical = 6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("Local Lan", color = WearsicTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(CircleShape)
-                            .background(WearsicSurface)
-                            .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
-                            .clickable {
-                                onServerUrlChanged(serverPresets[2])
-                            }
-                            .padding(vertical = 6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("Cloud", color = WearsicTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

@@ -3,19 +3,23 @@ package com.example.network.model
 import com.example.model.Track
 import com.example.model.Playlist
 import com.example.model.Album
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class ServerHealthDto(
     val status: String = "ok",
     val version: String = "1.0.0",
-    val serverName: String = "Wearsic Engine"
+    @SerialName("serverName") val serverName: String = "Wearsic Engine"
 )
 
+@Serializable
 data class TrackDto(
     val id: String,
     val title: String,
     val artist: String,
     val album: String? = null,
-    val artworkUrl: String? = null,
+    @SerialName("artworkUrl") val artworkUrl: String? = null,
     val durationMs: Long = 0L,
     val streamUrl: String
 ) {
@@ -46,23 +50,17 @@ data class TrackDto(
     }
 
     fun toRequestBodyJson(): String {
-        // Built through JSONObject so every value is escaped correctly
-        // (control chars, tabs, unicode) instead of a hand-rolled string.
-        return org.json.JSONObject().apply {
-            put("videoId", id)
-            put("title", title)
-            put("uploader", artist)
-            put("durationMs", durationMs)
-            put("thumbnailUrl", artworkUrl ?: "")
-        }.toString()
+        return kotlinx.serialization.json.Json.encodeToString(serializer(), this)
     }
 }
 
+@Serializable
 data class SearchResponseDto(
-    val query: String,
+    val query: String = "",
     val tracks: List<TrackDto> = emptyList()
 )
 
+@Serializable
 data class AlbumDto(
     val id: String,
     val name: String,
@@ -85,6 +83,7 @@ data class AlbumDto(
     }
 }
 
+@Serializable
 data class PlaylistDto(
     val id: String,
     val name: String,
@@ -101,10 +100,31 @@ data class PlaylistDto(
     }
 }
 
+@Serializable
 data class PlaylistWithTracksDto(
-    val id: String,
-    val name: String,
+    val id: String = "",
+    val name: String = "",
     val tracks: List<TrackDto> = emptyList()
+)
+
+@Serializable
+data class FavoritesResponseDto(
+    val favorites: List<TrackDto> = emptyList()
+)
+
+@Serializable
+data class SuggestionsResponseDto(
+    val suggestions: List<String> = emptyList()
+)
+
+@Serializable
+data class RelatedResponseDto(
+    val results: List<TrackDto> = emptyList()
+)
+
+@Serializable
+data class SearchResultsResponseDto(
+    val results: List<TrackDto> = emptyList()
 )
 
 sealed interface ConnectionTestState {

@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.WearsicApp
 import com.example.data.WearsicDownloadRepository
 import com.example.data.WearsicMusicRepository
 import com.example.data.WearsicPreferencesRepository
@@ -94,11 +95,12 @@ data class PlaylistDetailUiState(
 
 class WearsicPlayerViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val container = (application as WearsicApp).container
+    private val musicRepository = container.musicRepository
+    private val downloadRepository = container.downloadRepository
+    private val recentRepository = container.recentRepository
     private val preferencesRepository = WearsicPreferencesRepository(application.applicationContext)
-    private val musicRepository = WearsicMusicRepository(application.applicationContext, preferencesRepository)
-    private val downloadRepository = WearsicDownloadRepository(application.applicationContext)
     private val downloadManager = WearsicDownloadManager(application.applicationContext, downloadRepository)
-    private val recentRepository = WearsicRecentRepository(application.applicationContext)
     private val playbackController = WearsicPlaybackController(application.applicationContext)
 
     val uiState: StateFlow<PlaybackUiState> = playbackController.uiState

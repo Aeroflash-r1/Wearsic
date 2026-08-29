@@ -1,18 +1,21 @@
 package com.example.network
 
-import com.example.network.model.PlaylistDto
 import com.example.network.model.AlbumDto
+import com.example.network.model.FavoritesResponseDto
+import com.example.network.model.PlaylistDto
 import com.example.network.model.PlaylistWithTracksDto
 import com.example.network.model.SearchResponseDto
+import com.example.network.model.SearchResultsResponseDto
 import com.example.network.model.ServerHealthDto
+import com.example.network.model.SuggestionsResponseDto
 import com.example.network.model.TrackDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.URLEncoder
@@ -27,12 +30,14 @@ class WearsicHttpApiClient(
         .build()
 ) : WearsicApiClient {
 
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        coerceInputValues = true
+    }
+
     override suspend fun checkHealth(baseUrl: String): Result<ServerHealthDto> = withContext(Dispatchers.IO) {
-        val trimmed = baseUrl.trim()
-        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
-            return@withContext Result.failure(IOException("Invalid URL scheme. Must use https:// or http://"))
-        }
-        val sanitizedUrl = trimmed.trimEnd('/')
+        val sanitizedUrl = sanitize(baseUrl) ?: return@withContext Result.failure(IOException("Invalid URL scheme. Must use https:// or http://"))
         val healthUrl = "$sanitizedUrl/health"
 
         try {
@@ -49,17 +54,13 @@ class WearsicHttpApiClient(
                 }
 
                 val bodyString = response.body?.string() ?: ""
-                val json = try {
-                    JSONObject(bodyString)
+                val dto = try {
+                    json.decodeFromString<ServerHealthDto>(bodyString)
                 } catch (_: Exception) {
-                    JSONObject()
+                    ServerHealthDto()
                 }
 
-                val status = json.optString("status", if (response.isSuccessful) "ok" else "error")
-                val version = json.optString("version", "v1.0")
-                val serverName = json.optString("serverName", "Wearsic Ktor Engine")
-
-                Result.success(ServerHealthDto(status = status, version = version, serverName = serverName))
+                Result.success(dto)
             }
         } catch (e: UnknownHostException) {
             Result.failure(IOException("Host not found. Check URL or internet."))
@@ -89,13 +90,16 @@ class WearsicHttpApiClient(
                 }
 
                 val bodyString = response.body?.string() ?: ""
-                val json = JSONObject(bodyString)
-                val resultsJson = json.optJSONArray("results") ?: org.json.JSONArray()
+                val dto = try {
+                    json.decodeFromString<SearchResultsResponseDto>(bodyString)
+                } catch (_: Exception) {
+                    SearchResultsResponseDto()
+                }
 
                 Result.success(
                     SearchResponseDto(
                         query = query,
-                        tracks = parseTrackArray(resultsJson, sanitizedUrl)
+                        tracks = dto.results
                     )
                 )
             }
@@ -121,8 +125,17 @@ class WearsicHttpApiClient(
                 if (!response.isSuccessful) {
                     return@withContext Result.failure(IOException("Server error: HTTP ${response.code}"))
                 }
-                val bodyString = response.body?.string() ?: ""
-                Result.success(parseTrackArray(org.json.JSONArray(bodyString), sanitizedUrl))
+                val bodyString = response.body?.string() ?: "[]"
+                val dto = try {
+                    json.decodeFromString<List<TrackDto>>(bodyString)
+                } catch (_: Exception) {
+                    try {
+                        json.decodeFromString<FavoritesResponseDto>(bodyString).favorites
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                }
+                Result.success(dto)
             }
         } catch (e: Exception) {
             Result.failure(IOException(e.message ?: "Could not load favorites"))
@@ -182,21 +195,11 @@ class WearsicHttpApiClient(
                 if (!response.isSuccessful) {
                     return@withContext Result.failure(IOException("Server error: HTTP ${response.code}"))
                 }
-                val bodyString = response.body?.string() ?: ""
-                val json = JSONObject().put("playlists", org.json.JSONArray(bodyString))
-                val playlistsJson = json.optJSONArray("playlists") ?: org.json.JSONArray()
-
-                val playlists = mutableListOf<PlaylistDto>()
-                for (i in 0 until playlistsJson.length()) {
-                    val item = playlistsJson.getJSONObject(i)
-                    playlists.add(
-                        PlaylistDto(
-                            id = item.optString("id", "playlist_$i"),
-                            name = item.optString("name", "Unnamed Playlist"),
-                            trackCount = item.optInt("trackCount", 0),
-                            thumbnailUrl = item.optString("thumbnailUrl").takeIf { it.isNotBlank() }
-                        )
-                    )
+                val bodyString = response.body?.string() ?: "[]"
+                val playlists = try {
+                    json.decodeFromString<List<PlaylistDto>>(bodyString)
+                } catch (_: Exception) {
+                    emptyList()
                 }
                 Result.success(playlists)
             }
@@ -218,15 +221,13 @@ class WearsicHttpApiClient(
                 if (!response.isSuccessful) {
                     return@withContext Result.failure(IOException("Server error: HTTP ${response.code}"))
                 }
-                val bodyString = response.body?.string() ?: ""
-                val json = JSONObject(bodyString)
-                Result.success(
-                    PlaylistWithTracksDto(
-                        id = json.optString("id", playlistId),
-                        name = json.optString("name", "Playlist"),
-                        tracks = parseTrackArray(json.optJSONArray("tracks") ?: org.json.JSONArray(), sanitizedUrl)
-                    )
-                )
+                val bodyString = response.body?.string() ?: "{}"
+                val dto = try {
+                    json.decodeFromString<PlaylistWithTracksDto>(bodyString)
+                } catch (_: Exception) {
+                    PlaylistWithTracksDto(id = playlistId, name = "Playlist")
+                }
+                Result.success(dto)
             }
         } catch (e: Exception) {
             Result.failure(IOException(e.message ?: "Could not load playlist"))
@@ -268,11 +269,13 @@ class WearsicHttpApiClient(
                     if (!response.isSuccessful) {
                         return@use Result.failure(IOException("Server error: HTTP ${response.code}"))
                     }
-                    val json = JSONObject(response.body?.string() ?: "")
-                    val arr = json.optJSONArray("suggestions") ?: org.json.JSONArray()
-                    val list = mutableListOf<String>()
-                    for (i in 0 until arr.length()) list.add(arr.optString(i))
-                    Result.success(list)
+                    val bodyString = response.body?.string() ?: "{}"
+                    val dto = try {
+                        json.decodeFromString<SuggestionsResponseDto>(bodyString)
+                    } catch (_: Exception) {
+                        SuggestionsResponseDto()
+                    }
+                    Result.success(dto.suggestions)
                 }
             } catch (e: Exception) {
                 Result.failure(IOException(e.message ?: "Could not load suggestions"))
@@ -293,9 +296,13 @@ class WearsicHttpApiClient(
                     if (!response.isSuccessful) {
                         return@use Result.failure(IOException("Server error: HTTP ${response.code}"))
                     }
-                    val bodyString = response.body?.string() ?: ""
-                    val resultsJson = JSONObject(bodyString).optJSONArray("results") ?: org.json.JSONArray()
-                    Result.success(parseTrackArray(resultsJson, sanitizedUrl))
+                    val bodyString = response.body?.string() ?: "{}"
+                    val dto = try {
+                        json.decodeFromString<com.example.network.model.RelatedResponseDto>(bodyString)
+                    } catch (_: Exception) {
+                        com.example.network.model.RelatedResponseDto()
+                    }
+                    Result.success(dto.results)
                 }
             } catch (e: Exception) {
                 Result.failure(IOException(e.message ?: "Could not load related songs"))
@@ -316,19 +323,11 @@ class WearsicHttpApiClient(
                     if (!response.isSuccessful) {
                         return@use Result.failure(IOException("Server error: HTTP ${response.code}"))
                     }
-                    val arr = org.json.JSONArray(response.body?.string() ?: "[]")
-                    val albums = mutableListOf<AlbumDto>()
-                    for (i in 0 until arr.length()) {
-                        val item = arr.getJSONObject(i)
-                        albums.add(
-                            AlbumDto(
-                                id = item.optString("id"),
-                                name = item.optString("name", "Unknown Album"),
-                                uploader = item.optString("uploader", ""),
-                                trackCount = item.optInt("trackCount", 0),
-                                thumbnailUrl = item.optString("thumbnailUrl").takeIf { it.isNotBlank() }
-                            )
-                        )
+                    val bodyString = response.body?.string() ?: "[]"
+                    val albums = try {
+                        json.decodeFromString<List<AlbumDto>>(bodyString)
+                    } catch (_: Exception) {
+                        emptyList()
                     }
                     Result.success(albums)
                 }
@@ -351,14 +350,13 @@ class WearsicHttpApiClient(
                     if (!response.isSuccessful) {
                         return@use Result.failure(IOException("Server error: HTTP ${response.code}"))
                     }
-                    val json = JSONObject(response.body?.string() ?: "{}")
-                    Result.success(
-                        PlaylistWithTracksDto(
-                            id = json.optString("id", url),
-                            name = json.optString("name", "Album"),
-                            tracks = parseTrackArray(json.optJSONArray("tracks") ?: org.json.JSONArray(), sanitizedUrl)
-                        )
-                    )
+                    val bodyString = response.body?.string() ?: "{}"
+                    val dto = try {
+                        json.decodeFromString<PlaylistWithTracksDto>(bodyString)
+                    } catch (_: Exception) {
+                        PlaylistWithTracksDto(id = url, name = "Album")
+                    }
+                    Result.success(dto)
                 }
             } catch (e: Exception) {
                 Result.failure(IOException(e.message ?: "Could not load album"))
@@ -370,7 +368,10 @@ class WearsicHttpApiClient(
             val sanitizedUrl = sanitize(baseUrl)
                 ?: return@withContext Result.failure(IOException("Invalid URL scheme. Must use https:// or http://"))
             try {
-                val body = JSONObject().put("name", name).toString().toRequestBody(JSON_MEDIA_TYPE)
+                val body = kotlinx.serialization.json.Json.encodeToString(
+                    kotlinx.serialization.serializer<PlaylistDto>(),
+                    PlaylistDto(id = "", name = name)
+                ).toRequestBody(JSON_MEDIA_TYPE)
                 val request = Request.Builder()
                     .url("$sanitizedUrl/api/playlists")
                     .post(body)
@@ -380,15 +381,13 @@ class WearsicHttpApiClient(
                     if (!response.isSuccessful) {
                         return@use Result.failure(IOException("Server error: HTTP ${response.code}"))
                     }
-                    val json = JSONObject(response.body?.string() ?: "{}")
-                    Result.success(
-                        PlaylistDto(
-                            id = json.optString("id"),
-                            name = json.optString("name", name),
-                            trackCount = json.optInt("trackCount", 0),
-                            thumbnailUrl = null
-                        )
-                    )
+                    val bodyString = response.body?.string() ?: "{}"
+                    val dto = try {
+                        json.decodeFromString<PlaylistDto>(bodyString)
+                    } catch (_: Exception) {
+                        PlaylistDto(id = "", name = name)
+                    }
+                    Result.success(dto)
                 }
             } catch (e: Exception) {
                 Result.failure(IOException(e.message ?: "Could not create playlist"))
@@ -420,26 +419,6 @@ class WearsicHttpApiClient(
         val trimmed = baseUrl.trim()
         if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) return null
         return trimmed.trimEnd('/')
-    }
-
-    private fun parseTrackArray(jsonArray: org.json.JSONArray, sanitizedUrl: String): List<TrackDto> {
-        val trackList = mutableListOf<TrackDto>()
-        for (i in 0 until jsonArray.length()) {
-            val item = jsonArray.getJSONObject(i)
-            val videoId = item.optString("videoId", "track_$i")
-            trackList.add(
-                TrackDto(
-                    id = videoId,
-                    title = item.optString("title", "Unknown Track"),
-                    artist = item.optString("uploader", "Unknown Artist"),
-                    album = null,
-                    artworkUrl = item.optString("thumbnailUrl").takeIf { it.isNotBlank() },
-                    durationMs = item.optLong("durationMs", 0L),
-                    streamUrl = "$sanitizedUrl/api/stream/$videoId"
-                )
-            )
-        }
-        return trackList
     }
 
     companion object {
