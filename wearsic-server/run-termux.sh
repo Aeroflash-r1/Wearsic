@@ -22,7 +22,7 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
   set +a
 fi
 
-export JAVA_OPTS="${JAVA_OPTS:--Xms32m -Xmx192m -XX:+UseSerialGC -XX:TieredStopAtLevel=1}"
+export JAVA_OPTS="${JAVA_OPTS:--Xms64m -Xmx512m -XX:+UseG1GC -XX:MaxGCPauseMillis=150 -Dhttp.keepAlive=true -Dhttp.maxConnections=10}"
 export PORT="${PORT:-8080}"
 export WEARSIC_DB_PATH="${WEARSIC_DB_PATH:-$SCRIPT_DIR/wearsic.db}"
 
