@@ -1,24 +1,21 @@
 {
-  "name": "Wearsic — Wear OS 6 Dev (Codespaces)",
+  "name": "Wearsic — Wear OS Build",
+
   "build": {
     "dockerfile": "Dockerfile",
     "context": ".."
   },
-  "features": {
-    "ghcr.io/devcontainers/features/node:1": {
-      "version": "24"
-    },
-    "ghcr.io/devcontainers/features/github-cli:1": {}
-  },
-  "remoteUser": "vscode",
-  "postCreateCommand": "bash .devcontainer/post-create.sh",
 
-  "forwardPorts": [5554, 5555],
+  "remoteUser": "vscode",
+
+  "mounts": [
+    "source=wearsic-gradle-cache,target=/home/vscode/.gradle,type=volume"
+  ],
 
   "hostRequirements": {
     "cpus": 4,
     "memory": "8gb",
-    "storage": "32gb"
+    "storage": "24gb"
   },
 
   "customizations": {
@@ -26,19 +23,23 @@
       "extensions": [
         "vscjava.vscode-gradle",
         "fwcd.kotlin",
-        "redhat.vscode-xml",
-        "vscjava.vscode-java-pack",
-        "adelphes.android-dev-ext",
-        "eamodio.gitlens"
+        "redhat.vscode-xml"
       ],
       "settings": {
         "java.import.gradle.enabled": true,
-        "gradle.nestedProjects": true,
+        "gradle.autoDetect": "off",
+        "gradle.nestedProjects": false,
         "files.watcherExclude": {
           "**/.gradle/**": true,
           "**/build/**": true
         }
       }
     }
-  }
+  },
+
+  "otherPortsAttributes": {
+    "onAutoForward": "ignore"
+  },
+
+  "postCreateCommand": "chmod +x ./gradlew 2>/dev/null || true"
 }
