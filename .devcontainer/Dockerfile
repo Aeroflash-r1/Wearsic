@@ -1,33 +1,47 @@
-FROM mcr.microsoft.com/devcontainers/base:ubuntu
+FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
 
+ENV DEBIAN_FRONTEND=noninteractive
+
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+ENV ANDROID_HOME=/opt/android-sdk
 ENV ANDROID_SDK_ROOT=/opt/android-sdk
-ENV ANDROID_HOME=${ANDROID_SDK_ROOT}
-ENV PATH=${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools:${ANDROID_SDK_ROOT}/emulator:${PATH}
-ENV GRADLE_OPTS="-Dorg.gradle.daemon=false"
+ENV GRADLE_USER_HOME=/home/vscode/.gradle
+
+ENV PATH=$JAVA_HOME/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        openjdk-17-jdk-headless \
-        unzip curl wget zip \
-        libgl1 libpulse0 \
+        openjdk-21-jdk-headless \
+        unzip \
+        wget \
+        curl \
+        git \
+        jq \
+        ripgrep \
+        tree \
+        file \
+        ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN set -eux; \
-    url=$(curl -fsSL https://developer.android.com/studio \
-        | grep -oE 'https://dl\.google\.com/android/repository/commandlinetools-linux-[0-9]+_latest\.zip' \
-        | head -n1); \
-    mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools"; \
-    curl -fsSL "$url" -o /tmp/cmdline-tools.zip; \
-    unzip -q /tmp/cmdline-tools.zip -d "${ANDROID_SDK_ROOT}/cmdline-tools"; \
-    mv "${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools" "${ANDROID_SDK_ROOT}/cmdline-tools/latest"; \
-    rm /tmp/cmdline-tools.zip
+ARG CMDLINE_TOOLS_VERSION=14742923
+
+RUN mkdir -p "${ANDROID_HOME}/cmdline-tools" \
+    && wget -q \
+        "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip" \
+        -O /tmp/cmdline-tools.zip \
+    && unzip -q /tmp/cmdline-tools.zip -d "${ANDROID_HOME}/cmdline-tools" \
+    && mv "${ANDROID_HOME}/cmdline-tools/cmdline-tools" \
+        "${ANDROID_HOME}/cmdline-tools/latest" \
+    && rm /tmp/cmdline-tools.zip
 
 RUN yes | sdkmanager --licenses > /dev/null 2>&1 || true \
-    && sdkmanager --install \
+    && sdkmanager \
         "platform-tools" \
         "platforms;android-36" \
         "build-tools;36.0.0" \
-        "extras;google;m2repository" \
-        "extras;android;m2repository" > /dev/null
+    > /dev/null
 
-RUN chown -R vscode:vscode "${ANDROID_SDK_ROOT}"
+RUN chown -R vscode:vscode "${ANDROID_HOME}"
+
 USER vscode
+
+WORKDIR /workspaces
