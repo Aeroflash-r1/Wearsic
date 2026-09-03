@@ -35,6 +35,14 @@ fun main() {
     val audioProxy = AudioProxy(extractor, proxyClient)
     val apiKey = System.getenv("WEARSIC_API_KEY")?.trim()?.takeIf { it.isNotEmpty() }
 
+    // Detect ffmpeg so songs without native AAC can be converted server-side.
+    // Without it those rare songs answer 503 with install guidance instead.
+    Transcoder.detect()
+    if (!Transcoder.available) {
+        System.err.println("WARNING: ffmpeg not found on PATH — songs YouTube only offers in Opus/WebM " +
+            "will return 503. Install it in Termux with: pkg install ffmpeg")
+    }
+
     embeddedServer(ServerCIO, port = port, host = "0.0.0.0") {
         module(extractor, database, audioProxy, apiKey)
     }.start(wait = true)
@@ -53,7 +61,7 @@ fun Application.module(
 
     routing {
         get("/health") {
-            call.respond(HealthResponse())
+            call.respond(HealthResponse(transcoderAvailable = Transcoder.available))
         }
 
         route("/api") {

@@ -55,8 +55,12 @@ data class CreatePlaylistRequest(val name: String)
 @Serializable
 data class HealthResponse(
     val status: String = "ok",
-    val version: String = "1.2.0",
+    val version: String = "1.3.0",
     val serverName: String = "Wearsic Engine",
+    // True when ffmpeg was found, so server-side AAC conversion works for
+    // songs YouTube only offers in Opus/WebM. Purely informational — the app
+    // parses health leniently and ignores unknown fields.
+    val transcoderAvailable: Boolean = false,
 )
 
 @Serializable

@@ -13,7 +13,7 @@ plugins {
     application
 }
 
-version = "1.2.0"
+version = "1.3.0"
 
 val ktorVersion = "2.3.12"
 val coroutinesVersion = "1.7.1"
@@ -49,6 +49,12 @@ dependencies {
 
     // --- Logging ---
     implementation("ch.qos.logback:logback-classic:1.5.15")
+
+    // --- Tests ---
+    testImplementation(kotlin("test"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testImplementation("io.ktor:ktor-server-test-host-jvm:$ktorVersion")
+    testImplementation("io.ktor:ktor-client-content-negotiation-jvm:$ktorVersion")
 }
 
 application {

@@ -15,7 +15,11 @@ import io.ktor.server.response.respondBytesWriter
 import io.ktor.utils.io.copyAndClose
 import org.slf4j.LoggerFactory
 
-class AudioProxy(private val extractor: ExtractorService, private val client: HttpClient) {
+class AudioProxy(
+    private val extractor: ExtractorService,
+    private val client: HttpClient,
+    private val transcoder: Transcoder = Transcoder(client),
+) {
 
     private val logger = LoggerFactory.getLogger(AudioProxy::class.java)
 
@@ -42,6 +46,15 @@ class AudioProxy(private val extractor: ExtractorService, private val client: Ht
         }
 
         val rangeHeader = call.request.header(HttpHeaders.Range)
+
+        // Songs without a native AAC stream (WebM/Opus or Vorbis) are converted
+        // to AAC-LC on the server so the watch always gets hardware-decodable
+        // audio. When YouTube already offers AAC (audio/mp4 — the common case),
+        // pass it through untouched with zero CPU cost.
+        if (transcoder.needsTranscode(target.mimeType)) {
+            transcoder.handle(call, target.url, rangeHeader)
+            return
+        }
 
         try {
             client.prepareGet(target.url) {
