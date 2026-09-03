@@ -13,7 +13,7 @@ plugins {
     application
 }
 
-version = "1.1.0"
+version = "1.2.0"
 
 val ktorVersion = "2.3.12"
 val coroutinesVersion = "1.7.1"

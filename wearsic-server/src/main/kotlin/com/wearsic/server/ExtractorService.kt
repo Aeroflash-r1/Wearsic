@@ -37,12 +37,17 @@ class ExtractorService {
         private const val MAX_RESULTS = 10
         private const val MAX_SUGGESTIONS = 5
         private const val MAX_RELATED_MINUTES = 10
-        // Deliberately LOW target bitrate — this is a watch client on
-        // limited storage/bandwidth, not a hi-fi player. Preserved from the
-        // original deployment's run-termux.sh comment ("Audio quality
-        // target 70 kbps").
-        private const val TARGET_AUDIO_BITRATE_KBPS = 70
-        private const val STREAM_CACHE_TTL_MILLIS = 5 * 60 * 1000L // 5 minutes
+        // Audio profile tuned for the Galaxy Watch client:
+        //  - AAC-LC is preferred (hardware-decoded on the watch's SoC, so it
+        //    uses far less battery than software-decoded Opus/Vorbis).
+        //  - ~128 kbps is YouTube's standard AAC-LC tier (itag 140): good
+        //    quality for earbuds/speakers while staying small enough for the
+        //    watch's storage and bandwidth.
+        // Opus is only a fallback when YouTube offers no AAC stream.
+        private const val TARGET_AUDIO_BITRATE_KBPS = 128
+        // Long enough that replaying a song within the hour is instant (no
+        // re-extraction), short enough that expired CDN URLs never linger.
+        private const val STREAM_CACHE_TTL_MILLIS = 60 * 60 * 1000L // 1 hour
     }
 
     init {
@@ -227,10 +232,20 @@ class ExtractorService {
             val candidates = extractor.audioStreams.orEmpty().filter { it.isUrl }
             if (candidates.isEmpty()) return null
 
-            // Pick whichever stream's bitrate is closest to the target — not
-            // necessarily the highest quality, to protect the watch's storage
-            // and data usage.
-            return candidates.minByOrNull { stream ->
+            // Prefer AAC-LC (m4a/mp4 container): hardware-decoded on the watch
+            // for low battery drain. Only fall back to Opus/Vorbis (WebM) when
+            // YouTube offers no AAC audio at all.
+            val aacCandidates = candidates.filter { stream ->
+                stream.format?.mimeType?.contains("mp4", ignoreCase = true) == true
+            }
+            val pool = if (aacCandidates.isNotEmpty()) aacCandidates else candidates
+
+            // Prefer streams with a known bitrate; among those, pick the one
+            // closest to the target — good quality without wasting the watch's
+            // storage/bandwidth on unnecessarily huge files.
+            val withKnownBitrate = pool.filter { it.averageBitrate > 0 }
+            val selectable = if (withKnownBitrate.isNotEmpty()) withKnownBitrate else pool
+            return selectable.minByOrNull { stream ->
                 kotlin.math.abs(stream.averageBitrate - TARGET_AUDIO_BITRATE_KBPS)
             }
         } finally {

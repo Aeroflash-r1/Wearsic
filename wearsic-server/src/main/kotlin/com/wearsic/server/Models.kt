@@ -55,7 +55,7 @@ data class CreatePlaylistRequest(val name: String)
 @Serializable
 data class HealthResponse(
     val status: String = "ok",
-    val version: String = "1.1.0",
+    val version: String = "1.2.0",
     val serverName: String = "Wearsic Engine",
 )
 

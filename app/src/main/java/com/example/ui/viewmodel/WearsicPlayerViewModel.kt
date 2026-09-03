@@ -406,6 +406,13 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
             val localTrack = downloadRepository.getDownloadedTrack(track.id)
             val trackToPlay = localTrack ?: track
 
+            // Fire the server-side stream resolution NOW so the first play of
+            // this song skips extraction: the warm-up request resolves + caches
+            // the stream URL while the UI transitions, and ExoPlayer's request
+            // hits the warm cache instead of paying the 0.5-2s extraction.
+            // Local downloads skip this (their mediaUri isn't an http URL).
+            warmUpStream(trackToPlay)
+
             // Build a contextual queue so the next song auto-plays:
             // 1. If the track belongs to the completed downloads list, queue all
             //    downloaded tracks from this one onwards.
@@ -846,6 +853,11 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
             // exists, so saved songs NEVER re-stream from the server.
             val resolved = tracks.map { t ->
                 downloadRepository.getDownloadedTrack(t.id) ?: t
+            }
+            // Pre-warm the server for the first queued track so its play starts
+            // instantly too (same mechanism as playTrack; no-op for local files).
+            if (resolved.isNotEmpty()) {
+                warmUpStream(resolved[startIndex.coerceIn(0, resolved.lastIndex)])
             }
             playbackController.playTracks(resolved, startIndex.coerceIn(0, resolved.lastIndex))
         }
