@@ -141,10 +141,16 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
         sleepJob = viewModelScope.launch {
             var lastTick = System.nanoTime()
             while (true) {
-                delay(250)
+                // Battery-friendly cadence: the UI countdown only needs 1s
+                // granularity, so tick once per second while the timer runs.
+                // Only the final 10-second volume fade needs the fast 250ms
+                // loop — running that the whole time was ~4 wakeups/sec of
+                // pure waste on a watch that is supposed to be falling asleep.
                 val now = System.currentTimeMillis()
                 val remaining = endsAt - now
                 _sleepRemainingMs.value = remaining.coerceAtLeast(0L)
+                if (remaining <= 0L) break
+
                 if (remaining <= 10_000L) {
                     // Fade over the final 10 seconds.
                     val nowNano = System.nanoTime()
@@ -153,8 +159,10 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
                     val step = dtSec / 10f
                     val currentVol = 1f - ((10_000f - remaining.toFloat()) / 10_000f)
                     playbackController.setVolumeScale((currentVol - step).coerceIn(0f, 1f))
+                    delay(250)
+                } else {
+                    delay(1000)
                 }
-                if (remaining <= 0L) break
             }
             playbackController.pause()
             playbackController.setVolumeScale(1f)
@@ -332,7 +340,11 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
         if (!isNetworkAvailable()) return
 
         if (downloadManager.isDownloading(track.id)) return
-        if (downloads.value.any { it.trackId == track.id && it.isCompleted() }) return
+        // Use the EAGER completedTracks (file-verified) rather than downloads:
+        // downloads is WhileSubscribed, so it sits empty until the Downloads
+        // screen is opened — checking it let already-downloaded songs be
+        // auto-cached AGAIN every session (duplicate copies + wasted data).
+        if (completedTracks.value.any { it.id == track.id }) return
 
         evaluatedTrackIds.add(track.id)
         downloadManager.startDownload(track, autoCached = true)

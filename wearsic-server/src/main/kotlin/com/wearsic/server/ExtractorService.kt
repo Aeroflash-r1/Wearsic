@@ -108,6 +108,10 @@ class ExtractorService {
         return extractor.initialPage.items
             .filterIsInstance<StreamInfoItem>()
             .mapNotNull { it.toTrackDtoOrNull() }
+            // YouTube often returns the same video twice in one result page;
+            // without this the watch showed duplicate songs in search results
+            // and duplicated them in the play queue.
+            .distinctBy { it.videoId }
             .take(MAX_RESULTS)
     }
 
@@ -144,6 +148,7 @@ class ExtractorService {
                 .filterIsInstance<StreamInfoItem>()
                 .filter { it.duration in 1..(MAX_RELATED_MINUTES * 60) }
                 .mapNotNull { it.toTrackDtoOrNull() }
+                .distinctBy { it.videoId }
                 .take(MAX_RESULTS)
         }.getOrDefault(emptyList())
     }
@@ -178,6 +183,7 @@ class ExtractorService {
             val tracks = extractor.initialPage.items
                 .filterIsInstance<StreamInfoItem>()
                 .mapNotNull { it.toTrackDtoOrNull() }
+                .distinctBy { it.videoId }
                 .take(MAX_RESULTS)
             PlaylistTracksResponse(id = url, name = extractor.name ?: "Playlist", tracks = tracks)
         }.getOrNull()

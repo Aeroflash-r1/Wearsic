@@ -89,6 +89,7 @@ import com.example.ui.theme.WearsicVibrantLavender
 
 import com.example.ui.util.wearsicRotaryScroll
 import kotlinx.coroutines.delay
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -401,9 +402,18 @@ private fun BlobProgressPod(
     val targetProgress = if (durationMs > 0) {
         (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
     } else 0f
+
+    // Battery-conscious progress sweep: the position updates once per second,
+    // and animating every tick with an 850ms tween kept the blob redrawing
+    // ~50 frames per second for most of playback. Only real jumps (seeks,
+    // track changes — roughly 2+ seconds of movement) get the smooth sweep;
+    // ordinary per-second ticks snap in a single frame instead.
+    val lastTickTarget = remember { mutableFloatStateOf(targetProgress) }
+    val jumpSeconds = abs(targetProgress - lastTickTarget.floatValue) * durationMs / 1000f
+    LaunchedEffect(targetProgress) { lastTickTarget.floatValue = targetProgress }
     val smoothProgress by animateFloatAsState(
         targetValue = targetProgress,
-        animationSpec = tween(durationMillis = 850),
+        animationSpec = tween(durationMillis = if (jumpSeconds >= 2f) 850 else 0),
         label = "blobFill"
     )
 

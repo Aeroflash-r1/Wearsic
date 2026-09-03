@@ -74,6 +74,15 @@ class WearsicDownloadManager(
 
         val job = scope.launch {
             try {
+                // 0. Skip if this track is already fully downloaded — auto-cache
+                //    used to re-fetch songs that were completed in an earlier
+                //    session (the guard read a cold StateFlow), creating
+                //    duplicate copies and wasted data. Manual downloads of an
+                //    existing file are no-ops too; delete first to re-download.
+                if (repository.getDownloadedTrack(track.id) != null) {
+                    return@launch
+                }
+
                 // 1. Storage safety check
                 val stat = StatFs(getDownloadDir().path)
                 val availableBytes = stat.availableBytes
