@@ -45,7 +45,12 @@ class AudioProxy(private val extractor: ExtractorService, private val client: Ht
 
         try {
             client.prepareGet(target.url) {
-                rangeHeader?.let { header(HttpHeaders.Range, it) }
+                // Always ask upstream for a byte range: YouTube's CDN throttles
+                // non-range (200) audio responses and closes them after ~256KB,
+                // which made the first play of a song stall after ~15s of audio.
+                // Ranged requests stream the whole file at full speed. Forward the
+                // client's Range when present, otherwise request from byte 0.
+                header(HttpHeaders.Range, rangeHeader ?: "bytes=0-")
             }.execute { upstream ->
                 upstream.headers[HttpHeaders.ContentRange]?.let { call.response.header(HttpHeaders.ContentRange, it) }
                 call.response.header(HttpHeaders.AcceptRanges, "bytes")
