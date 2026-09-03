@@ -10,14 +10,17 @@ Standalone Ktor + NewPipe Extractor backend for the Wearsic Wear OS app. This pr
 
 ## Build and run
 
-### From the Git repository
+### From the Git repository (source build)
+
+The server's Kotlin source now lives in this folder (`build.gradle.kts` + `src/`; registered as the `:wearsic-server` module in the root Gradle build). The old compiled-jar deployment under `bin/`/`lib/` is kept for backward compatibility.
 
 ```bash
-./gradlew -p server build
-./gradlew -p server installDist
-cd server
+./gradlew :wearsic-server:installDist
+cd wearsic-server
 PORT=8080 WEARSIC_DB_PATH="$PWD/wearsic.db" ./run-termux.sh
 ```
+
+`run-termux.sh` finds the fresh source build at `build/install/wearsic-server/bin/wearsic-server`; copy that `bin`/`lib` over the existing folders to make the source build the default. See `SETUP.md` for details.
 
 ### From the ready-made Termux ZIP (`wearsic-server-termux.zip`)
 
@@ -38,7 +41,7 @@ PORT=8080 WEARSIC_DB_PATH="$PWD/wearsic.db" ./run-termux.sh
 
 The ZIP is self-contained: `run-termux.sh` sits next to `bin/` and `lib/` and launches the server with a small heap. Your favorites/playlists are stored in `wearsic.db` next to the script — keep a copy of an old `wearsic.db` if you want to carry data over.
 
-`run-termux.sh` uses a small heap and Serial GC by default. Override `JAVA_OPTS` when the phone has more memory.
+`run-termux.sh` sets a small heap and G1GC by default. Override `JAVA_OPTS` when the phone has more or less memory.
 
 ## Environment
 

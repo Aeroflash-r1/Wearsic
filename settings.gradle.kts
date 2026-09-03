@@ -20,9 +20,12 @@ dependencyResolutionManagement {
   repositories {
     google()
     mavenCentral()
+    // NewPipeExtractor is published via JitPack (server module).
+    maven("https://jitpack.io")
   }
 }
 
 rootProject.name = "Wearsic"
 
 include(":app")
+include(":wearsic-server")

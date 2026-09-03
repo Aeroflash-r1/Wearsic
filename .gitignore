@@ -20,3 +20,11 @@ my-upload-key.jks
 
 # Signing material - never commit
 KEYSTORE_BASE64.txt
+
+# Server module build output
+/wearsic-server/build/
+
+# Runtime SQLite databases (favorites/playlists) - never commit
+*.db
+*.db-shm
+*.db-wal
