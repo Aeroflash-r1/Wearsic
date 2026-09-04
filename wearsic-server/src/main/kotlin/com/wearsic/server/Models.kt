@@ -55,7 +55,9 @@ data class CreatePlaylistRequest(val name: String)
 @Serializable
 data class HealthResponse(
     val status: String = "ok",
-    val version: String = "1.4.0",
+    // ServerVersion.VERSION is the single source of truth (build.gradle.kts
+    // parses it so the JAR name and /health always agree).
+    val version: String = ServerVersion.VERSION,
     val serverName: String = "Wearsic Engine",
     // True when ffmpeg was found, so server-side AAC conversion works for
     // songs YouTube only offers in Opus/WebM. Purely informational — the app

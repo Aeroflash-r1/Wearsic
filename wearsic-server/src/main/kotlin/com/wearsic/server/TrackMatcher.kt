@@ -7,7 +7,7 @@ package com.wearsic.server
  * real track length almost exactly, while covers/remixes/extended versions
  * rarely do.
  */
-class TrackMatcher(private val youtube: ExtractorService) {
+class TrackMatcher(private val youtube: YoutubeMetadataClient) {
 
     companion object {
         private const val MIN_CONFIDENCE = 20.0

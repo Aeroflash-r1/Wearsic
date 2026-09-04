@@ -16,9 +16,9 @@ import io.ktor.utils.io.copyAndClose
 import org.slf4j.LoggerFactory
 
 class AudioProxy(
-    private val extractor: ExtractorService,
+    private val extractor: YoutubeMetadataClient,
     private val client: HttpClient,
-    private val transcoder: Transcoder = Transcoder(client),
+    val transcoder: Transcoder = Transcoder(client),
 ) {
 
     private val logger = LoggerFactory.getLogger(AudioProxy::class.java)
@@ -65,6 +65,16 @@ class AudioProxy(
                 // client's Range when present, otherwise request from byte 0.
                 header(HttpHeaders.Range, rangeHeader ?: "bytes=0-")
             }.execute { upstream ->
+                // A 4xx/5xx from the CDN must surface as a real error to the
+                // watch — previously the error body was streamed as if it
+                // were audio, leaving the player to fail cryptically.
+                if (upstream.status.value >= 400) {
+                    call.respond(
+                        HttpStatusCode.BadGateway,
+                        ErrorResponse("Upstream audio unavailable (HTTP ${upstream.status.value})")
+                    )
+                    return@execute
+                }
                 upstream.headers[HttpHeaders.ContentRange]?.let { call.response.header(HttpHeaders.ContentRange, it) }
                 call.response.header(HttpHeaders.AcceptRanges, "bytes")
 

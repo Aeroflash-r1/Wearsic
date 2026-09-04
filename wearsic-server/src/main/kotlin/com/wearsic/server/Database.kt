@@ -21,6 +21,14 @@ class Database(dbPath: String) {
     private val conn: Connection = DriverManager.getConnection("jdbc:sqlite:$dbPath").apply {
         createStatement().use { it.execute("PRAGMA foreign_keys = ON") }
         createStatement().use { it.execute("PRAGMA journal_mode = WAL") }
+        // WAL gives crash safety via the -wal/-shm sidecar files; NORMAL
+        // syncing is the SQLite-recommended pairing with WAL (durable across
+        // application crashes; only power loss may lose the last commits) and
+        // avoids an fsync per write on slow phone storage.
+        createStatement().use { it.execute("PRAGMA synchronous = NORMAL") }
+        // Busy timeout: WAL still momentarily blocks readers during
+        // checkpoints; wait briefly instead of failing instantly.
+        createStatement().use { it.execute("PRAGMA busy_timeout = 5000") }
     }
 
     init {

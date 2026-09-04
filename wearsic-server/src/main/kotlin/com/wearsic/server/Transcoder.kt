@@ -40,30 +40,38 @@ import java.util.concurrent.TimeUnit
 class Transcoder(
     private val client: HttpClient,
     private val ffmpegBinary: String = "ffmpeg",
+    /**
+     * Per-instance probe result — injectable so tests never mutate global
+     * state and remain order-independent. Defaults to a one-shot probe of
+     * [ffmpegBinary] at construction time (same behavior the static
+     * `detect()` used to provide at server startup).
+     */
+    availability: Boolean = detectBinary(ffmpegBinary),
 ) {
 
     private val logger = LoggerFactory.getLogger(Transcoder::class.java)
 
+    /** True when this instance's `ffmpeg` binary was found. */
+    val available: Boolean = availability
+
     companion object {
-        /** True when an `ffmpeg` binary was found at startup. */
-        @Volatile
-        var available: Boolean = false
-            private set
+        /**
+         * Instance-global transcode cap shared by every Transcoder created
+         * with the default construction (production creates exactly one).
+         * Declared here so repeated instantiations in tests cannot multiply
+         * concurrent ffmpeg processes.
+         */
+        private val sharedSlots = Semaphore(2)
 
-        /** Cap concurrent transcodes so a handful of simultaneous plays can't
-         *  peg the phone's CPU (transcoding is the only CPU-heavy path). */
-        private val slots = Semaphore(2)
-
-        fun detect(binary: String = "ffmpeg") {
-            available = runCatching {
-                val p = ProcessBuilder(binary, "-version")
-                    .redirectErrorStream(true)
-                    .start()
-                val exited = p.waitFor(5, TimeUnit.SECONDS)
-                p.destroy()
-                exited && p.exitValue() == 0
-            }.getOrDefault(false)
-        }
+        /** Probe [binary] without mutating any global state. */
+        fun detectBinary(binary: String = "ffmpeg"): Boolean = runCatching {
+            val p = ProcessBuilder(binary, "-version")
+                .redirectErrorStream(true)
+                .start()
+            val exited = p.waitFor(5, TimeUnit.SECONDS)
+            p.destroy()
+            exited && p.exitValue() == 0
+        }.getOrDefault(false)
     }
 
     /** WebM/Ogg (Opus/Vorbis) needs conversion; MP4 (AAC-LC) is already ideal. */
@@ -84,7 +92,7 @@ class Transcoder(
         // download-resume both stay correct even on transcoded songs.
         val startByte = parseRangeStart(rangeHeader)
 
-        slots.withPermit {
+        sharedSlots.withPermit {
             val process = ProcessBuilder(
                 ffmpegBinary, "-hide_banner", "-loglevel", "error",
                 "-i", "pipe:0",

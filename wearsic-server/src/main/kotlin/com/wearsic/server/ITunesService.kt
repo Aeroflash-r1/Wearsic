@@ -34,7 +34,7 @@ private data class ITunesSearchResponse(
 )
 
 /** No API key/registration needed — this is iTunes' public, unauthenticated search endpoint. */
-class ITunesService {
+class ITunesService : MetadataSource {
 
     // iTunes answers with Content-Type "text/javascript" (not
     // application/json), so the client deliberately skips ContentNegotiation
@@ -43,7 +43,7 @@ class ITunesService {
     private val json = Json { ignoreUnknownKeys = true }
     private val client = HttpClient(CIO)
 
-    suspend fun searchSongs(query: String, limit: Int = 10): List<ITunesTrack> {
+    override suspend fun searchSongs(query: String, limit: Int): List<ITunesTrack> {
         if (query.isBlank()) return emptyList()
         return runCatching {
             json.decodeFromString<ITunesSearchResponse>(
@@ -64,7 +64,7 @@ class ITunesService {
      * previous server run, or a server restart since the search. Without this
      * those ids could never be matched to a YouTube video again.
      */
-    suspend fun lookupTrack(trackId: Long): ITunesTrack? =
+    override suspend fun lookupTrack(trackId: Long): ITunesTrack? =
         runCatching {
             json.decodeFromString<ITunesSearchResponse>(
                 client.get("https://itunes.apple.com/lookup") {
@@ -74,7 +74,7 @@ class ITunesService {
             ).results.firstOrNull { it.trackName != null && it.artistName != null }
         }.onFailure { e -> System.err.println("ITUNES lookup failed for $trackId: $e") }.getOrNull()
 
-    fun toTrackDto(track: ITunesTrack): TrackDto = TrackDto(
+    override fun toTrackDto(track: ITunesTrack): TrackDto = TrackDto(
         videoId = track.surrogateId,
         title = track.trackName ?: "Unknown",
         uploader = track.artistName ?: "Unknown",

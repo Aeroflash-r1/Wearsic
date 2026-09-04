@@ -13,7 +13,14 @@ plugins {
     application
 }
 
-version = "1.4.0"
+// Version is owned by ServerVersion.kt (single source of truth). The build
+// parses it from source so the JAR name, manifest and /health always agree.
+version = {
+    val src = file("src/main/kotlin/com/wearsic/server/ServerVersion.kt").readText()
+    Regex("VERSION\\s*:\\s*String\\s*=\\s*\"([^\"]+)\"").find(src)
+        ?.groupValues?.get(1)
+        ?: throw GradleException("Could not parse ServerVersion.VERSION from ServerVersion.kt")
+}()
 
 val ktorVersion = "2.3.12"
 val coroutinesVersion = "1.7.1"
@@ -25,6 +32,7 @@ dependencies {
     implementation("io.ktor:ktor-server-cio-jvm:$ktorVersion")
     implementation("io.ktor:ktor-server-content-negotiation-jvm:$ktorVersion")
     implementation("io.ktor:ktor-server-call-logging-jvm:$ktorVersion")
+    implementation("io.ktor:ktor-server-status-pages-jvm:$ktorVersion")
     implementation("io.ktor:ktor-server-host-common-jvm:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json-jvm:$ktorVersion")
 
@@ -53,14 +61,29 @@ dependencies {
     // --- Tests ---
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testImplementation("org.junit.jupiter:junit-jupiter-params:5.10.2")
     testImplementation("io.ktor:ktor-server-test-host-jvm:$ktorVersion")
     testImplementation("io.ktor:ktor-client-content-negotiation-jvm:$ktorVersion")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion")
 }
 
 application {
     // Matches the com.wearsic.server package used by the previous compiled
     // jar, so nothing about the deployment path changes.
     mainClass.set("com.wearsic.server.ApplicationKt")
+}
+
+// Stamp the version into the JAR manifest so a deployed install can be
+// identified without source access:
+//   unzip -p wearsic-server/lib/wearsic-server-<v>.jar META-INF/MANIFEST.MF
+// Configured eagerly (not in doLast), so the configuration cache stays happy.
+tasks.jar {
+    manifest {
+        attributes(
+            "Implementation-Title" to "wearsic-server",
+            "Implementation-Version" to project.version,
+        )
+    }
 }
 
 kotlin {

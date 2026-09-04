@@ -6,18 +6,24 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * /api/search now returns iTunes metadata directly — fast (~150-300ms),
- * clean data, no YouTube round trip in the request path at all. Each
- * result's videoId is a surrogate ("it:12345") until it's actually matched
- * to a YouTube video.
+ * /api/search returns iTunes metadata directly — fast (~150-300ms), clean
+ * data, and NO YouTube round trip in the request path when iTunes has usable
+ * results. Each result's videoId is a surrogate ("it:12345") until it is
+ * matched to a real YouTube video.
+ *
+ * Fallback contract (see OrchestratorFallbackTest):
+ *   iTunes usable results  -> return them; YouTube is only touched in the
+ *                             background (match + stream prefetch)
+ *   iTunes empty/unusable  -> direct YouTube search so the watch still gets
+ *                             results instead of an empty page
  *
  * Immediately after responding, the top few results are matched + their
- * streams pre-resolved in the background, so by the time someone actually
- * taps play, both steps are usually already done and cached.
+ * streams pre-resolved in the background, so by the time someone taps play,
+ * both steps are usually already done and cached.
  */
 class MetadataSearchOrchestrator(
-    private val iTunes: ITunesService,
-    private val youtube: ExtractorService,
+    private val metadata: MetadataSource,
+    private val youtube: YoutubeMetadataClient,
     private val matcher: TrackMatcher,
 ) {
     companion object {
@@ -25,25 +31,38 @@ class MetadataSearchOrchestrator(
     }
 
     // Deliberately not tied to any single request's lifecycle — a prefetch
-    // job should keep running even after the search response is already
-    // sent back to the client.
+    // job should keep running even after the search response is already sent
+    // back to the client.
     private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val trackInfoCache = BoundedCache<String, ITunesTrack>(maxSize = 256)
     private val matchCache = BoundedCache<String, String>(maxSize = 256) // surrogateId -> real YouTube videoId
 
+    /**
+     * Counts fallback invocations; exposed for tests to prove that a usable
+     * iTunes response never triggers the synchronous YouTube fallback.
+     */
+    var youtubeFallbackCount: Int = 0
+        private set
+
     suspend fun search(query: String): List<TrackDto> {
-        val tracks = iTunes.searchSongs(query)
+        val tracks = metadata.searchSongs(query)
         if (tracks.isNotEmpty()) {
+            // USABLE iTunes results: return them immediately. The YouTube
+            // fallback below is NOT reached — a previous version awaited the
+            // fallback search even when this branch produced results, paying a
+            // pointless multi-second YouTube round trip per search.
             tracks.forEach { trackInfoCache.put(it.surrogateId, it) }
 
             prefetch(tracks.take(PREFETCH_COUNT))
 
-            return tracks.map { iTunes.toTrackDto(it) }
+            return tracks.map { metadata.toTrackDto(it) }
         }
-        // iTunes has no entry for this query (obscure or unreleased-on-iTunes
-        // track) — fall back to the direct YouTube search so the watch still
-        // gets results instead of an empty page.
+
+        // No usable iTunes metadata (obscure or unreleased-on-iTunes track) —
+        // fall back to the direct YouTube search so the watch still gets
+        // results instead of an empty page.
+        youtubeFallbackCount++
         return youtube.search(query)
     }
 
@@ -61,9 +80,9 @@ class MetadataSearchOrchestrator(
      * YouTube id already (related/playlist results, which stay
      * NewPipeExtractor-only), pass it through unchanged. If it's a
      * surrogate iTunes id, use the cached match if the prefetch already
-     * finished, or match synchronously right now as a fallback so
-     * playback always works even if the user tapped faster than the
-     * background prefetch could keep up.
+     * finished, or match synchronously right now as a fallback so playback
+     * always works even if the user tapped faster than the background
+     * prefetch could keep up.
      */
     suspend fun resolveStreamVideoId(requestedId: String): String? {
         if (!requestedId.startsWith(ITunesTrack.SURROGATE_PREFIX)) return requestedId
@@ -75,7 +94,7 @@ class MetadataSearchOrchestrator(
         // metadata from iTunes by id instead of giving up, so saved songs
         // keep playing forever.
         val track = trackInfoCache.get(requestedId)
-            ?: iTunes.lookupTrack(requestedId.removePrefix(ITunesTrack.SURROGATE_PREFIX).toLongOrNull() ?: return null)
+            ?: metadata.lookupTrack(requestedId.removePrefix(ITunesTrack.SURROGATE_PREFIX).toLongOrNull() ?: return null)
             ?: return null
         trackInfoCache.put(track.surrogateId, track)
         return resolveAndCacheMatch(track)

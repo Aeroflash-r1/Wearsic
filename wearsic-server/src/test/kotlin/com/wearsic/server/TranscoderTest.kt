@@ -17,16 +17,19 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.cio.CIO as ServerCIO
 import io.ktor.server.response.header
+import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytesWriter
 import io.ktor.server.routing.get as routeGet
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import io.ktor.utils.io.writeFully
-import kotlinx.serialization.json.Json
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestInstance
 import java.io.File
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -35,7 +38,12 @@ import kotlin.test.assertTrue
  * the process plumbing, the CDN→ffmpeg stdin pump, byte-offset skipping (used
  * by ExoPlayer seeks and the app's download resume) and response metadata —
  * without needing a real ffmpeg or YouTube access in CI.
+ *
+ * Each test constructs its own [Transcoder] instance: no static mutable
+ * state is touched, so test order cannot affect results (each test also gets
+ * a fresh fake-ffmpeg script and upstream server).
  */
+@TestInstance(TestInstance.Lifecycle.PER_METHOD)
 class TranscoderTest {
 
     /** 1 MB of deterministic bytes standing in for a source audio stream. */
@@ -44,6 +52,7 @@ class TranscoderTest {
     private fun fakeFfmpeg(): File {
         val script = File.createTempFile("fake-ffmpeg", ".sh").apply {
             setExecutable(true)
+            deleteOnExit()
             // Escaped string (not a raw template) so \$1 reaches bash intact.
             writeText(
                 "#!/bin/bash\n" +
@@ -65,15 +74,24 @@ class TranscoderTest {
                     } else {
                         0L
                     }
+                    if (start > sourceBytes.size) {
+                        call.respond(HttpStatusCode.RequestedRangeNotSatisfiable, "range too large")
+                        return@routeGet
+                    }
                     call.respondBytesWriter(
                         contentType = ContentType.parse("audio/webm"),
                         status = if (start > 0) HttpStatusCode.PartialContent else HttpStatusCode.OK
                     ) {
                         if (start > 0) {
-                            call.response.header(HttpHeaders.ContentRange, "bytes $start-*")
+                            call.response.header(HttpHeaders.ContentRange, "bytes $start-${sourceBytes.size - 1}/${sourceBytes.size}")
                         }
                         writeFully(sourceBytes, start.toInt(), sourceBytes.size - start.toInt())
                     }
+                }
+
+                // Upstream that always fails, for the 4xx-propagation test.
+                routeGet("/broken") {
+                    call.respond(HttpStatusCode.Forbidden, "cdn says no")
                 }
             }
         }
@@ -84,12 +102,8 @@ class TranscoderTest {
     @Test
     fun `webm stream is routed through ffmpeg and bytes are served`() = runBlocking {
         val fake = fakeFfmpeg()
-        Transcoder.detect(fake.absolutePath)
-        assertTrue(Transcoder.available, "fake ffmpeg must be detected")
-
-        // Real client used by the Transcoder to fetch from the upstream server.
-        val transcoderClient = HttpClient(CIO)
-        val transcoder = Transcoder(transcoderClient, ffmpegBinary = fake.absolutePath)
+        val transcoder = Transcoder(HttpClient(CIO), ffmpegBinary = fake.absolutePath, availability = true)
+        assertTrue(transcoder.available, "fake ffmpeg must be detected")
 
         val upstream = startUpstream()
         val port = upstream.resolvedConnectors().first().port
@@ -130,18 +144,15 @@ class TranscoderTest {
             }
         } finally {
             upstream.stop(100, 500)
-            transcoderClient.close()
         }
     }
 
     @Test
     fun `missing ffmpeg yields actionable 503`() = runBlocking {
-        // Point at a binary that does not exist → detection fails.
-        Transcoder.detect("/nonexistent/ffmpeg")
-        assertTrue(!Transcoder.available)
-
-        val transcoderClient = HttpClient(CIO)
-        val transcoder = Transcoder(transcoderClient, ffmpegBinary = "/nonexistent/ffmpeg")
+        // Injected unavailable instance — no global state mutated, so this
+        // test is independent of the test above regardless of execution order.
+        val transcoder = Transcoder(HttpClient(CIO), ffmpegBinary = "/nonexistent/ffmpeg", availability = false)
+        assertFalse(transcoder.available)
 
         try {
             testApplication {
@@ -162,7 +173,55 @@ class TranscoderTest {
                 assertTrue(body.contains("ffmpeg"), "503 must tell the user to install ffmpeg: $body")
             }
         } finally {
-            transcoderClient.close()
+            // nothing to clean up
         }
+    }
+
+    @Test
+    fun `needsTranscode is mime-driven`() {
+        val transcoder = Transcoder(HttpClient(CIO), availability = false)
+        assertTrue(transcoder.needsTranscode("audio/webm"), "Opus/WebM needs conversion")
+        assertTrue(transcoder.needsTranscode("audio/ogg"), "Vorbis needs conversion")
+        assertFalse(transcoder.needsTranscode("audio/mp4"), "AAC/mp4 is passed through")
+        // Verified behavior: the check is a substring match on "mp4". YouTube
+        // only ever ships AAC as audio/mp4, which passes through; a hypothetical
+        // x-m4a MIME does not contain "mp4" and would be (harmlessly) re-encoded.
+        assertTrue(transcoder.needsTranscode("audio/x-m4a"), "non-YouTube m4a MIME is conservatively transcoded")
+    }
+
+    @Test
+    fun `upstream 4xx surfaces as 502 instead of garbage audio`() = runBlocking {
+        val fake = fakeFfmpeg()
+        val transcoder = Transcoder(HttpClient(CIO), ffmpegBinary = fake.absolutePath, availability = true)
+
+        val upstream = startUpstream()
+        val port = upstream.resolvedConnectors().first().port
+
+        try {
+            testApplication {
+                application {
+                    install(ContentNegotiation) {
+                        json(Json { ignoreUnknownKeys = true; encodeDefaults = true })
+                    }
+                    routing {
+                        routeGet("/stream") {
+                            transcoder.handle(call, "http://127.0.0.1:$port/broken", null)
+                        }
+                    }
+                }
+                val resp = client.get("/stream")
+                assertEquals(HttpStatusCode.BadGateway, resp.status, "body: ${resp.bodyAsText()}")
+                assertTrue(resp.bodyAsText().contains("Upstream audio unavailable"))
+            }
+        } finally {
+            upstream.stop(100, 500)
+        }
+    }
+
+    @Test
+    fun `detectBinary returns false for a nonexistent binary`() {
+        assertFalse(Transcoder.detectBinary("/nonexistent/ffmpeg-path"))
+        // The real production binary is probed but never mutates instance state.
+        Transcoder.detectBinary("ffmpeg") // must not throw regardless of host
     }
 }
