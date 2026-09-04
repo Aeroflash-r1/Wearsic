@@ -124,9 +124,12 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease :wearsic-server:installDist --stacktrace
 
-      - name: Package server from THIS build (never a committed zip)
+      - name: Stage release assets from THIS build (never a committed zip)
         run: |
           mkdir -p dist
+          # Signed release APK built moments ago in this same job.
+          cp app/build/outputs/apk/release/app-release.apk "dist/Wearsic-${GITHUB_REF_NAME}.apk"
+          # Server installDist output built moments ago in this same job.
           VERSION=$(grep -oP 'VERSION: String = "\K[^"]+' wearsic-server/src/main/kotlin/com/wearsic/server/ServerVersion.kt)
           echo "Packaging server version $VERSION"
           STAGE="dist/wearsic-server"
@@ -137,6 +140,7 @@ jobs:
           cp wearsic-server/.env.example "$STAGE/"
           cp wearsic-server/README.md "$STAGE/"
           (cd dist && zip -qr "wearsic-server-termux-${GITHUB_REF_NAME}.zip" wearsic-server)
+          ls -la dist/
 
       - name: Verify packaged server (boot + /health version)
         run: |
