@@ -22,6 +22,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
 ARG CMDLINE_TOOLS_VERSION=14742923
 
 RUN mkdir -p "${ANDROID_HOME}/cmdline-tools" \
@@ -43,5 +47,11 @@ RUN yes | sdkmanager --licenses > /dev/null 2>&1 || true \
 RUN chown -R vscode:vscode "${ANDROID_HOME}"
 
 USER vscode
+
+# OpenCode CLI
+RUN curl -fsSL https://opencode.ai/install | bash
+
+# Freebuff CLI (free/ad-supported Codebuff build)
+RUN sudo npm install -g freebuff
 
 WORKDIR /workspaces
