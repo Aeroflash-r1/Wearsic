@@ -50,6 +50,7 @@ import com.example.ui.theme.WearsicGlassBorder
 import com.example.ui.theme.WearsicGlassFill
 import com.example.ui.components.WearsicSecondaryPillButton
 import com.example.ui.components.WearsicScreenHeader
+import com.example.ui.components.WearsicSongRow
 import com.example.ui.theme.WearsicBlack
 import com.example.ui.theme.WearsicError
 import com.example.ui.theme.WearsicLavenderContainer
@@ -344,78 +345,22 @@ private fun PlaylistRow(
     modifier: Modifier = Modifier,
     onLongPress: () -> Unit = {}
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(CircleShape)
-            .background(WearsicGlassFill)
-            .border(1.dp, WearsicGlassBorder, CircleShape)
-            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
-            .padding(horizontal = 12.dp, vertical = 9.dp)
-            .testTag("playlist_${playlist.id}")
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (!playlist.thumbnailUrl.isNullOrBlank()) {
-                coil.compose.AsyncImage(
-                    model = coil.request.ImageRequest.Builder(context)
-                        .data(playlist.thumbnailUrl)
-                        .size(120)
-                        .build(),
-                    contentDescription = playlist.name,
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(CircleShape)
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .background(WearsicLavenderContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
-                        contentDescription = null,
-                        tint = WearsicVibrantLavender,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = playlist.name,
-                    color = WearsicTextPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "${playlist.trackCount} tracks",
-                    color = WearsicTextSecondary,
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
+    WearsicSongRow(
+        title = playlist.name,
+        artist = "${playlist.trackCount} tracks",
+        artworkUrl = playlist.thumbnailUrl,
+        onClick = onClick,
+        modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onLongPress),
+        testTag = "playlist_${playlist.id}",
+        trailing = {
             Icon(
                 imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
                 contentDescription = null,
                 tint = WearsicTextMuted,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(18.dp)
             )
         }
-    }
+    )
 }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)

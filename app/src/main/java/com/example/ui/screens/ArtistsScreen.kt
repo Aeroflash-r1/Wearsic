@@ -157,7 +157,7 @@ fun ArtistsScreen(
                             .background(WearsicGlassFill)
                             .border(1.dp, WearsicGlassBorder, CircleShape)
                             .clickable { selected = artist }
-                            .padding(horizontal = 12.dp, vertical = 9.dp)
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
                             .testTag("artist_${artist.name}")
                     ) {
                         Row(
@@ -166,7 +166,7 @@ fun ArtistsScreen(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(30.dp)
+                                    .size(40.dp)
                                     .clip(CircleShape)
                                     .background(WearsicVibrantLavenderFallback.copy(alpha = 0.25f)),
                                 contentAlignment = Alignment.Center
@@ -175,23 +175,23 @@ fun ArtistsScreen(
                                     imageVector = Icons.Rounded.Person,
                                     contentDescription = null,
                                     tint = WearsicVibrantLavenderFallback,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.size(10.dp))
+                            Spacer(modifier = Modifier.size(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = artist.name,
                                     color = WearsicTextPrimary,
-                                    fontSize = 12.sp,
+                                    fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = "${artist.songs.size} saved songs",
                                     color = WearsicTextSecondary,
-                                    fontSize = 10.sp
+                                    fontSize = 12.sp
                                 )
                             }
                         }

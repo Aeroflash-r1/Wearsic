@@ -54,6 +54,9 @@ import com.example.data.db.DownloadState
 import com.example.data.db.WearsicDownloadEntity
 import com.example.model.Track
 import com.example.ui.components.WearsicScreenHeader
+import com.example.ui.components.WearsicSongRow
+import com.example.ui.components.WearsicSongRowActionButton
+import com.example.ui.components.WearsicSongRowPlayButton
 import com.example.ui.theme.WearsicBlack
 import com.example.ui.theme.WearsicError
 import com.example.ui.theme.WearsicLavenderContainer
@@ -246,123 +249,33 @@ private fun DownloadedTrackItemCard(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val sizeMb = if (entity.fileSizeBytes > 0) {
         String.format("%.1f MB", entity.fileSizeBytes / (1024.0 * 1024.0))
     } else {
         "Offline"
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(CircleShape)
-            .background(WearsicSurface)
-            .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
-            .clickable(onClick = onPlay)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .testTag("downloaded_track_${entity.trackId}")
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                if (!entity.artworkUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(entity.artworkUrl)
-                            .size(120)
-                            .build(),
-                        contentDescription = entity.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .background(WearsicLavenderContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.MusicNote,
-                            contentDescription = null,
-                            tint = WearsicVibrantLavender,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column {
-                    Text(
-                        text = entity.title,
-                        color = WearsicTextPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "${entity.artist} • $sizeMb",
-                        color = WearsicTextSecondary,
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
+    WearsicSongRow(
+        title = entity.title,
+        artist = "${entity.artist} • $sizeMb",
+        artworkUrl = entity.artworkUrl,
+        onClick = onPlay,
+        modifier = modifier,
+        testTag = "downloaded_track_${entity.trackId}",
+        trailing = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Play Icon Button
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(WearsicVibrantLavender)
-                        .clickable(onClick = onPlay),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.PlayArrow,
-                        contentDescription = "Play Offline",
-                        tint = WearsicTextPrimaryDark,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-
+                WearsicSongRowPlayButton(onClick = onPlay)
                 Spacer(modifier = Modifier.width(6.dp))
-
-                // Delete Button
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(WearsicSurface)
-                        .border(1.dp, WearsicSurfaceBorder, CircleShape)
-                        .clickable(onClick = onDelete)
-                        .testTag("delete_download_${entity.trackId}"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Delete,
-                        contentDescription = "Delete",
-                        tint = WearsicTextMuted,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
+                WearsicSongRowActionButton(
+                    icon = Icons.Rounded.Delete,
+                    contentDescription = "Delete",
+                    onClick = onDelete,
+                    testTag = "delete_download_${entity.trackId}",
+                    tint = WearsicTextMuted
+                )
             }
         }
-    }
+    )
 }
 
 @Composable
@@ -377,7 +290,7 @@ private fun DownloadingItemCard(
             .clip(CircleShape)
             .background(WearsicSurface)
             .border(1.dp, WearsicVibrantLavender.copy(alpha = 0.4f), CircleShape)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
             .testTag("downloading_track_${entity.trackId}")
     ) {
         Row(
@@ -391,7 +304,7 @@ private fun DownloadingItemCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(30.dp)
+                        .size(40.dp)
                         .clip(CircleShape)
                         .background(WearsicLavenderContainer),
                     contentAlignment = Alignment.Center
@@ -400,25 +313,25 @@ private fun DownloadingItemCard(
                         imageVector = Icons.Rounded.HourglassEmpty,
                         contentDescription = "Downloading",
                         tint = WearsicVibrantLavender,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
                 Column {
                     Text(
                         text = entity.title,
                         color = WearsicTextPrimary,
-                        fontSize = 12.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = "Downloading ${entity.progress}%",
                         color = WearsicVibrantLavender,
-                        fontSize = 10.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -480,15 +393,15 @@ private fun FailedDownloadItemCard(
                     Text(
                         text = entity.title,
                         color = WearsicTextPrimary,
-                        fontSize = 12.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = entity.errorMessage ?: "Download failed",
                         color = WearsicError,
-                        fontSize = 10.sp,
+                        fontSize = 12.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

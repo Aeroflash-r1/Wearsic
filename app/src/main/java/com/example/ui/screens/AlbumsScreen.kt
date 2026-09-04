@@ -56,6 +56,7 @@ import androidx.wear.compose.material3.Text
 import androidx.wear.tooling.preview.devices.WearDevices
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.model.Album
+import com.example.ui.components.WearsicSongRow
 import com.example.ui.theme.WearsicGlassBorder
 import com.example.ui.theme.WearsicGlassFill
 import com.example.ui.components.WearsicScreenHeader
@@ -199,57 +200,22 @@ private fun AlbumCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(CircleShape)
-            .background(WearsicGlassFill)
-            .border(1.dp, WearsicGlassBorder, CircleShape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (!album.thumbnailUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = ImageRequest.Builder(context).data(album.thumbnailUrl).size(160).build(),
-                contentDescription = album.name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(34.dp).clip(CircleShape)
-            )
-        } else {
-            Box(
-                modifier = Modifier.size(34.dp).clip(CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(imageVector = Icons.Rounded.Album, contentDescription = null, tint = WearsicVibrantLavender)
-            }
-        }
-        Spacer(modifier = Modifier.size(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = album.name,
-                color = WearsicTextPrimary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = "${album.trackCount} songs • ${album.uploader}",
-                color = WearsicTextSecondary,
-                fontSize = 10.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+    WearsicSongRow(
+        title = album.name,
+        artist = "${album.trackCount} songs • ${album.uploader}",
+        artworkUrl = album.thumbnailUrl,
+        onClick = onClick,
+        modifier = modifier,
+        testTag = "album_${album.id}",
+        trailing = {
+            Icon(
+                imageVector = Icons.Rounded.Album,
+                contentDescription = null,
+                tint = WearsicVibrantLavender.copy(alpha = 0.7f),
+                modifier = Modifier.size(18.dp)
             )
         }
-        Icon(
-            imageVector = Icons.Rounded.Album,
-            contentDescription = null,
-            tint = WearsicVibrantLavender.copy(alpha = 0.7f),
-            modifier = Modifier.size(16.dp)
-        )
-    }
+    )
 }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)

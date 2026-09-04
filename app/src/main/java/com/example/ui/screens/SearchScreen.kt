@@ -66,6 +66,9 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.model.Track
 import com.example.ui.components.WearsicScreenHeader
+import com.example.ui.components.WearsicSongRow
+import com.example.ui.components.WearsicSongRowActionButton
+import com.example.ui.components.WearsicSongRowPlayButton
 import com.example.ui.theme.WearsicBlack
 import com.example.ui.theme.WearsicGlassBorder
 import com.example.ui.theme.WearsicGlassFill
@@ -350,159 +353,29 @@ private fun SearchTrackItem(
     onAddToQueue: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(CircleShape)
-            .background(WearsicGlassFill)
-            .border(1.dp, WearsicGlassBorder, CircleShape)
-            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .testTag("search_track_${track.id}")
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                // Artwork thumbnail or placeholder
-                if (!track.artworkUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(track.artworkUrl)
-                            .size(120)
-                            .build(),
-                        contentDescription = track.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .background(WearsicLavenderContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.MusicNote,
-                            contentDescription = null,
-                            tint = WearsicVibrantLavender,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column {
-                    Text(
-                        text = track.title,
-                        color = WearsicTextPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = track.artist,
-                        color = WearsicTextSecondary,
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
+    // Rows keep just More + Play inline; queue/download/playlist actions are
+    // in the long-press action sheet, which frees real width for the title.
+    WearsicSongRow(
+        title = track.title,
+        artist = track.artist,
+        artworkUrl = track.artworkUrl,
+        onClick = onClick,
+        modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onLongPress),
+        testTag = "search_track_${track.id}",
+        trailing = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(com.example.ui.theme.WearsicGlassFill)
-                        .border(1.dp, com.example.ui.theme.WearsicGlassBorder, CircleShape)
-                        .clickable(onClick = onMore)
-                        .testTag("search_more_${track.id}"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.MoreHoriz,
-                        contentDescription = "More actions",
-                        tint = com.example.ui.theme.WearsicTextMuted,
-                        modifier = Modifier.size(13.dp)
-                    )
-                }
-
+                WearsicSongRowActionButton(
+                    icon = Icons.Rounded.MoreHoriz,
+                    contentDescription = "More actions",
+                    onClick = onMore,
+                    testTag = "search_more_${track.id}",
+                    tint = WearsicTextMuted
+                )
                 Spacer(modifier = Modifier.width(6.dp))
-
-                // Add to Queue button
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(WearsicSurface)
-                        .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
-                        .clickable(onClick = onAddToQueue)
-                        .testTag("search_add_to_queue_${track.id}"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
-                        contentDescription = "Add to Queue",
-                        tint = WearsicTextMuted,
-                        modifier = Modifier.size(13.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // Download button
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(WearsicSurface)
-                        .border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
-                        .clickable(onClick = onDownload)
-                        .testTag("search_download_${track.id}"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Download,
-                        contentDescription = "Download",
-                        tint = WearsicVibrantLavender,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // Play button
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(WearsicVibrantLavender)
-                        .clickable(onClick = onClick),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.PlayArrow,
-                        contentDescription = "Play",
-                        tint = WearsicTextPrimaryDark,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
+                WearsicSongRowPlayButton(onClick = onClick)
             }
         }
-    }
+    )
 }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)

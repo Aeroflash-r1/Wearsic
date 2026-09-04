@@ -1,25 +1,17 @@
 package com.example.media
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
-import android.os.Bundle
 import androidx.annotation.OptIn
-import androidx.core.app.NotificationCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.session.MediaNotification
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
-import androidx.wear.ongoing.OngoingActivity
 import com.example.MainActivity
-import com.example.R
 import com.example.media.cache.WearsicPlaybackCacheManager
 
 class WearsicMediaService : MediaSessionService() {
@@ -27,19 +19,13 @@ class WearsicMediaService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private var player: ExoPlayer? = null
 
-    private val CHANNEL_ID = "wearsic_playback"
-    private val NOTIFICATION_ID = 1001
-
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
 
-        // Notification channel for playback + Ongoing Activity ring.
-        getSystemService(NOTIFICATION_SERVICE).let {
-            (it as NotificationManager).createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Playback", NotificationManager.IMPORTANCE_LOW)
-            )
-        }
+        // Media3's default media notification uses a system-managed playback
+        // channel; no manual channel needed (and a manual one would leave
+        // dead config behind once the custom provider is gone).
 
         // 1. Audio attributes for battery-conscious music playback
         val audioAttributes = AudioAttributes.Builder()
@@ -76,10 +62,14 @@ class WearsicMediaService : MediaSessionService() {
 
         this.player = exoPlayer
 
-        ensureNotificationChannel()
-        setMediaNotificationProvider(ongoingNotificationProvider())
-
-        // 5. Session Activity Intent + MediaSession
+        // 5. Session Activity Intent + MediaSession. Wear OS creates the
+        //    media ongoing activity (status ring) automatically from media
+        //    notifications, and Media3 publishes the notification itself — so
+        //    there is deliberately NO manual OngoingActivity here. Applying
+        //    one manually on top of Media3's notification made the watch show
+        //    TWO notifications (the media card + an orphaned ongoing-activity
+        //    card), because every metadata update re-posts the notification
+        //    without the manual ongoing-activity extras.
         val sessionActivityIntent = PendingIntent.getActivity(
             this,
             0,
@@ -94,62 +84,6 @@ class WearsicMediaService : MediaSessionService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
         return mediaSession
-    }
-
-    /** Wear OS Ongoing Activity: status ring around the app icon while playing. */
-    private fun ongoingNotificationProvider(): MediaNotification.Provider {
-        return object : MediaNotification.Provider {
-            override fun createNotification(
-                mediaSession: MediaSession,
-                commandButtons: com.google.common.collect.ImmutableList<androidx.media3.session.CommandButton>,
-                actionFactory: MediaNotification.ActionFactory,
-                callback: MediaNotification.Provider.Callback
-            ): androidx.media3.session.MediaNotification {
-                ensureNotificationChannel()
-                val player = mediaSession?.player
-                val title = player?.currentMediaItem?.mediaMetadata?.title?.toString().orEmpty().ifBlank { "Wearsic" }
-                val text = player?.currentMediaItem?.mediaMetadata?.artist?.toString().orEmpty()
-
-                val builder = NotificationCompat.Builder(this@WearsicMediaService, CHANNEL_ID)
-                    .setSmallIcon(R.drawable.ic_launcher_foreground)
-                    .setContentTitle(title)
-                    .setContentText(text)
-                    .setOngoing(true)
-                    .setOnlyAlertOnce(true)
-                    .setContentIntent(sessionActivityIntent())
-
-                try {
-                    OngoingActivity.Builder(this@WearsicMediaService, NOTIFICATION_ID, builder)
-                        .setStaticIcon(R.drawable.ic_launcher_foreground)
-                        .setTouchIntent(sessionActivityIntent())
-                        .build()
-                        .apply(this@WearsicMediaService)
-                } catch (_: Exception) {
-                    // Best-effort; base notification still works without the ring.
-                }
-                return androidx.media3.session.MediaNotification(NOTIFICATION_ID, builder.build())
-            }
-
-            override fun handleCustomCommand(
-                mediaSession: MediaSession,
-                action: String,
-                extras: Bundle
-            ): Boolean = false
-        }
-    }
-
-    private fun sessionActivityIntent(): PendingIntent = PendingIntent.getActivity(
-        this,
-        0,
-        Intent(this, MainActivity::class.java),
-        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-    )
-
-    private fun ensureNotificationChannel() {
-        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Playback", NotificationManager.IMPORTANCE_LOW)
-        )
     }
 
     /**

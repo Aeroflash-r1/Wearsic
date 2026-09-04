@@ -58,6 +58,7 @@ import com.example.ui.components.WearsicPrimaryPillButton
 import com.example.ui.components.WearsicScreenHeader
 import com.example.ui.components.WearsicSecondaryPillButton
 import com.example.ui.components.WearsicSettingsActionPill
+import com.example.ui.components.WearsicSongRow
 import com.example.ui.theme.WearsicBlack
 import com.example.ui.theme.WearsicGlassFill
 import com.example.ui.theme.WearsicGlassBorder
@@ -337,79 +338,18 @@ private fun RecentTrackRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(CircleShape)
-            .background(WearsicGlassFill)
-            .border(1.dp, WearsicGlassBorder, CircleShape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 7.dp)
-            .testTag("recent_track_${track.id}")
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                if (!track.artworkUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(track.artworkUrl)
-                            .size(120)
-                            .build(),
-                        contentDescription = track.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .background(WearsicLavenderContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.MusicNote,
-                            contentDescription = null,
-                            tint = WearsicVibrantLavender,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column {
-                    Text(
-                        text = track.title,
-                        color = WearsicTextPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = track.artist,
-                        color = WearsicTextSecondary,
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
+    WearsicSongRow(
+        title = track.title,
+        artist = track.artist,
+        artworkUrl = track.artworkUrl,
+        onClick = onClick,
+        modifier = modifier,
+        testTag = "recent_track_${track.id}",
+        trailing = {
+            // Decorative play affordance — the whole row is tappable.
             Box(
                 modifier = Modifier
-                    .size(26.dp)
+                    .size(28.dp)
                     .clip(CircleShape)
                     .background(WearsicVibrantLavender),
                 contentAlignment = Alignment.Center
@@ -418,11 +358,11 @@ private fun RecentTrackRow(
                     imageVector = Icons.Rounded.PlayArrow,
                     contentDescription = "Play",
                     tint = WearsicTextPrimaryDark,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(17.dp)
                 )
             }
         }
-    }
+    )
 }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)

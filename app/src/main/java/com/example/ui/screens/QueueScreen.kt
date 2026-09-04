@@ -51,6 +51,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.example.model.PlaybackUiState
 import com.example.model.Track
 import com.example.ui.components.WearsicScreenHeader
+import com.example.ui.components.WearsicSongRow
+import com.example.ui.components.WearsicSongRowActionButton
 import com.example.ui.theme.WearsicBlack
 import com.example.ui.theme.WearsicError
 import com.example.ui.theme.WearsicGlassBorder
@@ -329,7 +331,7 @@ private fun QueueCurrentCard(
                 )
             )
             .border(1.dp, WearsicVibrantLavender.copy(alpha = 0.5f), CircleShape)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
             .testTag("queue_current_track")
     ) {
         Row(
@@ -343,7 +345,7 @@ private fun QueueCurrentCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(30.dp)
+                        .size(40.dp)
                         .clip(CircleShape)
                         .background(WearsicSurface),
                     contentAlignment = Alignment.Center
@@ -352,25 +354,25 @@ private fun QueueCurrentCard(
                         imageVector = Icons.Rounded.MusicNote,
                         contentDescription = null,
                         tint = WearsicVibrantLavender,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
                 Column {
                     Text(
                         text = track.title.ifBlank { "No Active Track" },
                         color = WearsicTextPrimaryDark,
-                        fontSize = 12.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = if (isPlaying) "Now Playing" else "Paused",
                         color = if (isPlaying) WearsicTextPrimaryDark else WearsicTextPrimaryDark.copy(alpha = 0.7f),
-                        fontSize = 10.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1
                     )
@@ -387,95 +389,23 @@ private fun QueueTrackItem(
     onRemove: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(CircleShape)
-            .background(WearsicGlassFill)
-            .border(1.dp, WearsicGlassBorder, CircleShape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .testTag("queue_track_${track.id}")
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                if (!track.artworkUrl.isNullOrBlank()) {
-                    coil.compose.AsyncImage(
-                        model = coil.request.ImageRequest.Builder(context)
-                            .data(track.artworkUrl)
-                            .size(120)
-                            .build(),
-                        contentDescription = track.title,
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .background(WearsicLavenderContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.MusicNote,
-                            contentDescription = null,
-                            tint = WearsicVibrantLavender,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column {
-                    Text(
-                        text = track.title,
-                        color = WearsicTextPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = track.artist,
-                        color = WearsicTextSecondary,
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .size(26.dp)
-                    .clip(CircleShape)
-                    .background(WearsicSurface)
-                    .border(1.dp, WearsicSurfaceBorder, CircleShape)
-                    .clickable(onClick = onRemove)
-                    .testTag("queue_remove_${track.id}"),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Close,
-                    contentDescription = "Remove from Queue",
-                    tint = WearsicTextMuted,
-                    modifier = Modifier.size(14.dp)
-                )
-            }
+    WearsicSongRow(
+        title = track.title,
+        artist = track.artist,
+        artworkUrl = track.artworkUrl,
+        onClick = onClick,
+        modifier = modifier,
+        testTag = "queue_track_${track.id}",
+        trailing = {
+            WearsicSongRowActionButton(
+                icon = Icons.Rounded.Close,
+                contentDescription = "Remove from Queue",
+                onClick = onRemove,
+                testTag = "queue_remove_${track.id}",
+                tint = WearsicTextMuted
+            )
         }
-    }
+    )
 }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
