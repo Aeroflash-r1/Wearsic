@@ -46,10 +46,13 @@ X-Wearsic-Key: <key>
 - **Response** `200 OK`:
 
 ```json
-{ "status": "ok", "version": "1.0.0", "serverName": "Wearsic Engine" }
+{ "status": "ok", "version": "1.4.1", "serverName": "Wearsic Engine", "transcoderAvailable": true }
 ```
 
 Client tolerates missing fields (`status` defaults to `"ok"` when HTTP 200).
+`version` comes from `ServerVersion.VERSION` (single source of truth shared
+with the Gradle build/JAR name); `transcoderAvailable` is informational and
+reports whether ffmpeg was found for Opus/WebM→AAC transcoding.
 
 ### 2. Music Search
 
@@ -81,7 +84,7 @@ Client tolerates missing fields (`status` defaults to `"ok"` when HTTP 200).
 - **GET** `/api/stream/{videoId}`
 - Headers: standard `Range: bytes=start-end` supported (forwarded upstream).
 - Response: `200 OK` full body or `206 Partial Content`.
-- Content-Type: `audio/mp4`, `audio/webm` (Opus), or `audio/mpeg`.
+- Content-Type mirrors the upstream audio: `audio/mp4` (YouTube AAC-LC ~128 kbps — the common case, hardware-decoded on the watch), `audio/webm` (Opus), or `audio/aac` when the server transcoded an Opus/WebM-only song with ffmpeg (503 with install guidance if ffmpeg is missing).
 
 ### 4. Suggestions
 
@@ -124,8 +127,10 @@ Note: album `id` is a full playlist URL, not a bare id.
 - **GET** `/api/playlists/{id}` → `{ "id", "name", "tracks": [TrackDto...] }`
 - **POST** `/api/playlists/{id}/tracks` with TrackDto JSON body.
 - **DELETE** `/api/playlists/{id}/tracks/{videoId}`
-  - Special case (bytecode patch #4): `videoId == "*"` deletes the entire
-    playlist (FK cascade). This is how the app's "remove playlist" works.
+  - Special case: `videoId == "*"` deletes the entire playlist (FK cascade).
+    This is how the app's "remove playlist" works. Implemented directly in
+    `Database.deletePlaylistTrack` (historical origin: see
+    `server-patches/PATCHES.md`).
 
 ---
 

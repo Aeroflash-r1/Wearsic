@@ -25,7 +25,7 @@ Wearsic adopts a clean, modular Model-View-ViewModel (MVVM) architecture with st
 (Room SQLite, File Storage)        (wearsic_playback_cache / wearsic_downloads)
          │
          ▼
-[ WearsicMusicRepository ] <══> [ WearsicHttpApiClient / WearsicMockApiClient ]
+[ WearsicMusicRepository ] <══> [ WearsicHttpApiClient ]
 ```
 
 ### 1. Presentation & Interaction (Jetpack Compose for Wear OS)
@@ -60,8 +60,9 @@ This client is fully hardened to support any standard Ktor/OkHttp endpoint follo
 ```json
 {
   "status": "ok",
-  "version": "1.0.0",
-  "serverName": "Wearsic Engine"
+  "version": "1.4.1",
+  "serverName": "Wearsic Engine",
+  "transcoderAvailable": true
 }
 ```
 
@@ -84,7 +85,7 @@ This client is fully hardened to support any standard Ktor/OkHttp endpoint follo
 
 ### 3. Media Stream
 - **Route**: `GET /api/stream/{videoId}`
-- **Response Stream**: Returns `audio/mp4`, `audio/webm`, or `audio/mpeg` media streams with support for HTTP range requests.
+- **Response Stream**: Returns `audio/mp4` (YouTube AAC — the common case), `audio/webm` (Opus), or `audio/aac` (server-transcoded Opus/WebM-only songs) with support for HTTP range requests.
 
 ---
 
@@ -120,13 +121,12 @@ This client is fully hardened to support any standard Ktor/OkHttp endpoint follo
 
 ---
 
-## 📡 API Contract & Future Server Architecture
+## 📡 API Contract & Server Architecture
 
-The Wearsic watch application is designed as a **highly lightweight streaming client**. To protect the watch's battery, processor, and cellular data consumption:
-- All heavy audio scraping (e.g. YouTube Music / NewPipe / extraction pipelines) and transcoding are delegated to a separate, future external **Ktor Backend Service**.
-- The watch communicates with the server via a clean, versioned HTTP API.
-
-For the detailed endpoints, JSON schemas, payload fields, and streaming compatibility requirements, refer to the [API Contract Documentation](./API_CONTRACT.md).
+The Wearsic watch application is a **lightweight streaming client**. To protect the watch's battery, processor, and cellular data consumption:
+- All heavy work — metadata search (iTunes-first), YouTube extraction via NewPipeExtractor, and on-the-fly ffmpeg transcoding — happens in the **Wearsic Ktor server** (`wearsic-server/`, the canonical source implementation).
+- The watch communicates with the server via the stable HTTP API documented in [API_CONTRACT.md](./API_CONTRACT.md).
+- To run the server on a spare Android phone with Termux, follow [TERMUX_SERVER_GUIDE.md](./TERMUX_SERVER_GUIDE.md).
 
 ---
 
@@ -137,9 +137,10 @@ For the detailed endpoints, JSON schemas, payload fields, and streaming compatib
 ./gradlew assembleDebug
 ```
 
-### Run Robolectric Unit & Integration Test Suite
+### Run Test Suites
 ```bash
-./gradlew :app:testDebugUnitTest
+./gradlew :app:testDebugUnitTest   # app Robolectric tests
+./gradlew :wearsic-server:test     # server unit/integration tests
 ```
 
 ---
@@ -148,10 +149,13 @@ For the detailed endpoints, JSON schemas, payload fields, and streaming compatib
 
 `.github/workflows/android.yml` runs on every push/PR:
 
-1. **test** — Robolectric unit test suite.
+1. **test** — app Robolectric tests **plus** `:wearsic-server:test` (a broken
+   server cannot merge silently while Android tests pass).
 2. **build-debug** — unsigned debug APK uploaded as a workflow artifact.
-3. **release** *(tag pushes only, `v*`)* — signed release APK attached to a
-   GitHub Release.
+3. **release** *(tag pushes only, `v*`)* — signed release APK **and** a fresh
+   source-built server ZIP (`wearsic-server-termux-<tag>.zip`) attached to a
+   GitHub Release; the packaged server is booted and its `/health` version is
+   verified before publishing.
 
 One-time setup for releases — add these repository **secrets**:
 

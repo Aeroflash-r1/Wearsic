@@ -38,33 +38,14 @@ rebuild or extractor update.
 | 7 | `NewPipeDownloader` (method `execute`) | `HttpURLConnection` (15000/30000, no keep-alive) → Ktor CIO pooled `HttpClient` (`HttpTimeout 10/15s`, `maxConnections=10`, `keepAlive 5s`, pipelining) | No HTTP/2/keep-alive caused fresh TCP+TLS handshake on every extraction |
 | 8 | `YoutubeSession` / `NewPipeDownloader` | Verified already wired: `WEARSIC_YOUTUBE_COOKIE` env → `YoutubeSession.cookie` → `Cookie` header in `execute()` | Auth root cause — cookie was not missing, just bottlenecked |
 
-## Current application status (verified 2026-09-01)
+## Current application status
 
-- **wearsic-server-termux-FIXED.zip** — patches 1–8 applied (canonical distributable, incl. G1GC launcher).
-- **wearsic-server/lib/wearsic-server-1.0.0.jar** — patches 1–8 applied (now in sync; previously patch 4 only).
-- Fix 1 was already correct — no jar change, just verification.
-
-Verify a jar's state:
-
-```bash
-unzip -p <jar> com/wearsic/server/Database.class | strings | grep -c "DELETE FROM playlists WHERE id"
-# 1 = patch 4 present, 0 = missing
-unzip -p <jar> com/wearsic/server/ExtractorService.class | strings | grep -c "SearchMusicHelper2"
-# 1 = patch 5 present
-javap -classpath <jar> -c 'com.wearsic.server.ExtractorService$streamTarget$2' | grep -c "retrying with default"
-# 1 = patch 6 present
-javap -classpath <jar> -p com.wearsic.server.NewPipeDownloader | grep -c "HttpClient"
-# 1 = patch 7 present (vs 0 before)
-```
-
-Patch #2 note: growing a Utf8 entry shifts bytes but class files reference
-strings by index, so it is safe. Verify with javap afterwards.
-
-Patch #4 tool: `PatchDeletePlaylist.java` in this folder (compile against
-ASM 9.x: `javac -cp asm-9.9.jar PatchDeletePlaylist.java`). Re-run on a fresh
-Database.class if you rebuild.
-
-Patches 5-7 tools: `PatchFix2b.java` (searchMusic delegate), `PatchFix3Tree2.java` + `PatchFix3b.java` (streamTarget swap), `NewPipeDownloaderFixed.kt` (Ktor CIO, compiled via `kotlinc -classpath lib/*`). See `/tmp` decompiled sources for CFR reference.
+- **The source build supersedes all of this.** The old
+  `wearsic-server-termux-FIXED.zip`, `bin/`/`lib/` jars and other binary
+  artifacts were removed from the repository; release ZIPs are built from
+  source by CI and verified against `/health` before publishing.
+- This file is historical documentation of the jar era only. Nothing here
+  needs to be re-applied to the current source.
 
 ## Non-jar components shipped in wearsic-server-termux-FIXED.zip
 
@@ -79,12 +60,16 @@ Patches 5-7 tools: `PatchFix2b.java` (searchMusic delegate), `PatchFix3Tree2.jav
 
 ## Verified live endpoints (server v1.0.0 jar lineage)
 
+Historical notes from the jar era. The source server serves the same surface
+(see `API_CONTRACT.md` for the current reference) — except that
+`/api/channel` was never carried over and playlists gained a `DELETE` route
+via `videoId == "*"`.
+
 - GET /api/suggestions?q=            -> {"suggestions":[...]}
 - GET /api/related/{videoId}         -> {"results":[TrackDto]} (filter >10 min mixes!)
 - GET /api/search/albums?q=          -> [AlbumDto{id=playlistURL,...}]
 - GET /api/playlist?url=<url>        -> {id,name,tracks:[...]}
-- POST /api/playlists {"name"}       -> PlaylistDto (no DELETE route for playlists themselves)
-- Auth: env WEARSIC_API_KEY + header X-Wearsic-Key (empty env = open)
+- POST /api/playlists {"name"}       -> PlaylistDto
 
 ## App-side notes
 

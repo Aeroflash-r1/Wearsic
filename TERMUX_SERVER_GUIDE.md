@@ -38,8 +38,8 @@ pkg update -y && pkg upgrade -y
 
 ```bash
 pkg install -y curl
-curl -L -o ~/wearsic-server-termux-v<version>.zip \
-  "https://github.com/roopanganesan40-glitch/Wearos-music/releases/latest/download/wearsic-server-termux-v<version>.zip"
+curl -L -o ~/wearsic-server-termux.zip \
+  "https://github.com/Aeroflash-r1/wearsic/releases/latest/download/wearsic-server-termux-v<version>.zip"
 ```
 
 ### Option B — copy from somewhere else
@@ -95,8 +95,11 @@ curl http://127.0.0.1:8080/health
 Expected response:
 
 ```json
-{"status":"ok","version":"1.0.0","serverName":"Wearsic Engine"}
+{"status":"ok","version":"1.4.1","serverName":"Wearsic Engine","transcoderAvailable":true}
 ```
+
+(The exact `version` value depends on the release you installed — it always
+matches the release tag.)
 
 Try a real search too:
 
@@ -238,6 +241,6 @@ Reboot the phone once to confirm it comes up by itself.
 
 ---
 
-*Server internals & patch history: [`server-patches/PATCHES.md`](server-patches/PATCHES.md).
-Full endpoint reference: [`wearsic-server/README.md`](wearsic-server/README.md)
-and [`API_CONTRACT.md`](API_CONTRACT.md).*
+*Server internals: [`wearsic-server/README.md`](wearsic-server/README.md).
+Full endpoint reference: [`API_CONTRACT.md`](API_CONTRACT.md).
+Historical jar-patch notes (obsolete): [`server-patches/PATCHES.md`](server-patches/PATCHES.md).*
