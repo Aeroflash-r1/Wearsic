@@ -179,6 +179,21 @@ class Database(dbPath: String) {
         }
     }
 
+    /**
+     * One-time cleanup for the v1.4.4 matcher fix: builds before it scored
+     * version words (demo/live/...) on normalized text and could persist
+     * several songs onto the same video. Those rows are wiped once so every
+     * song re-matches with the fixed matcher; the marker row makes this a
+     * no-op on all subsequent boots.
+     */
+    fun clearStaleMatchesOnce(markerKey: String, markerValue: String) {
+        synchronized(lock) {
+            if (getSetting(markerKey) == markerValue) return
+            conn.createStatement().use { it.executeUpdate("DELETE FROM surrogate_matches") }
+            setSetting(markerKey, markerValue)
+        }
+    }
+
     // ---------------- Favorites ----------------
 
     fun listFavorites(): List<TrackDto> = synchronized(lock) {

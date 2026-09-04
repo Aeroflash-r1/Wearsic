@@ -137,13 +137,19 @@ class MetadataSearchOrchestrator(
                 return cached
             }
         }
-        val videoId = matcher.match(
+        val match = matcher.matchDetailed(
             artist = track.artistName ?: return null,
             title = track.trackName ?: return null,
             durationMs = track.trackTimeMillis ?: 0L,
         ) ?: return null
-        matchCache.put(track.surrogateId, videoId)
-        runCatching { persistentMatches?.putMatchedVideoId(track.surrogateId, videoId) }
-        return videoId
+        matchCache.put(track.surrogateId, match.videoId)
+        // Persist only CONFIDENT matches: a weak (fallback) match would
+        // otherwise be remembered for 30 days and replay the wrong audio
+        // every time the song is tapped. Weak matches still play — they are
+        // just re-evaluated on the next server start.
+        if (match.strong) {
+            runCatching { persistentMatches?.putMatchedVideoId(track.surrogateId, match.videoId) }
+        }
+        return match.videoId
     }
 }

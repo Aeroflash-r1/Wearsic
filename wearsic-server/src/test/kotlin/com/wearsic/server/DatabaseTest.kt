@@ -200,6 +200,22 @@ class DatabaseTest {
     }
 
     @Test
+    fun `stale-match wipe runs once and never again`() {
+        val db = newDb()
+        db.putMatchedVideoId("it:1", "wrongAudio")
+        db.putMatchedVideoId("it:2", "wrongAudio2")
+
+        db.clearStaleMatchesOnce("matcher_version_wipe", "1.4.4")
+        assertEquals(0, db.matchCount(), "pre-fix matches must be wiped")
+
+        // Second boot: marker present -> no-op, new matches survive.
+        db.putMatchedVideoId("it:3", "goodAudio")
+        db.clearStaleMatchesOnce("matcher_version_wipe", "1.4.4")
+        assertEquals(1, db.matchCount())
+        assertEquals("goodAudio", db.getMatchedVideoId("it:3"))
+    }
+
+    @Test
     fun `surrogate matches survive reopening the same database file`() {
         val path = tempDir.resolve("persist-matches.db").toString()
 

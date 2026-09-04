@@ -3,6 +3,7 @@ package com.wearsic.server
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -197,6 +198,60 @@ class TrackMatcherTest {
             candidate("channel", "Weather with You", uploader = "Crowded House VEVO", durationSec = 226),
         )
         assertEquals("channel", best())
+    }
+
+    // ---------------- Version confusion regression (v1.4.4) ----------------
+
+    /**
+     * THE "tapped Poster Boy, heard another song" bug: the requested track is
+     * a Home Demo, YouTube's search only surfaces the studio upload (duration
+     * far off, but Artist-Topic + exact title score high). The old matcher
+     * scored version words on NORMALIZED text — which strips "(Home Demo)" —
+     * so it could not see the mismatch and happily served (and persisted) the
+     * studio audio for the demo request.
+     */
+    @Test
+    fun `demo request that only finds the studio upload is flagged weak - not persisted`() = runTest {
+        fakeYoutube.results = listOf(
+            candidate("junk", "Totally unrelated video", durationSec = 42),
+            candidate("studio", "Poster Boy", uploader = "Artist - Topic", durationSec = 225),
+        )
+        val result = matcher.matchDetailed("Artist", "Poster Boy (Home Demo)", 187_000L)
+        assertNotNull(result)
+        // Playback continuity: still returns the best available candidate.
+        assertEquals("studio", result.videoId)
+        // But it must NOT be treated as a confident match (orchestrator will
+        // play it without persisting it for 30 days).
+        assertFalse(result.strong, "version-mismatched fallback must be weak")
+    }
+
+    @Test
+    fun `demo request finds the actual demo upload when it exists`() = runTest {
+        fakeYoutube.results = listOf(
+            candidate("studio", "Poster Boy", uploader = "Artist - Topic", durationSec = 225),
+            candidate("demo", "Poster Boy (Home Demo)", uploader = "ArtistBootlegs", durationSec = 187),
+        )
+        val result = matcher.matchDetailed("Artist", "Poster Boy (Home Demo)", 187_000L)
+        assertEquals("demo", result?.videoId)
+        assertTrue(result?.strong == true)
+    }
+
+    @Test
+    fun `plain song is not matched to a live upload when the studio version exists`() = runTest {
+        fakeYoutube.results = listOf(
+            candidate("live", "Poster Boy (Live at somewhere)", uploader = "Artist - Topic", durationSec = 225),
+            candidate("studio", "Poster Boy", uploader = "Artist - Topic", durationSec = 225),
+        )
+        val result = matcher.matchDetailed("Artist", "Poster Boy", 225_000L)
+        assertEquals("studio", result?.videoId)
+    }
+
+    @Test
+    fun `word boundary check does not match inside other words`() = runTest {
+        val m = TrackMatcher(fakeYoutube)
+        assertTrue(m.containsWord("believe in live", "live"))
+        assertFalse(m.containsWord("i believe you", "live"), "'believe' must not contain 'live'")
+        assertFalse(m.containsWord("delivery day", "live"))
     }
 }
 

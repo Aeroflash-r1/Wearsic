@@ -36,6 +36,9 @@ fun main() {
 
     val database = Database(dbPath)
     YoutubeSession.init(database)
+    // v1.4.4: wipe matches persisted by older, version-blind matcher builds
+    // so every song re-matches with the fixed logic once.
+    database.clearStaleMatchesOnce("matcher_version_wipe", "1.4.4")
     val gateway = YoutubeGateway()
     val proxyClient = HttpClient(CIO)
 
