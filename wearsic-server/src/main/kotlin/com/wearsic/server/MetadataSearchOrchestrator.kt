@@ -25,9 +25,22 @@ class MetadataSearchOrchestrator(
     private val metadata: MetadataSource,
     private val youtube: YoutubeMetadataClient,
     private val matcher: TrackMatcher,
+    /**
+     * Optional persistent match store. When supplied, surrogate -> videoId
+     * matches survive a server restart, so tapping a saved favorite/playlist
+     * song replays instantly instead of re-running the multi-second YouTube
+     * match + extraction path. Nullable so tests can run fully in-memory.
+     */
+    private val persistentMatches: MatchPersistence? = null,
 ) {
     companion object {
         private const val PREFETCH_COUNT = 6
+    }
+
+    /** Read/write view over persisted surrogate matches (e.g. SQLite). */
+    interface MatchPersistence {
+        fun getMatchedVideoId(surrogateId: String): String?
+        fun putMatchedVideoId(surrogateId: String, videoId: String)
     }
 
     // Deliberately not tied to any single request's lifecycle — a prefetch
@@ -102,12 +115,21 @@ class MetadataSearchOrchestrator(
 
     private suspend fun resolveAndCacheMatch(track: ITunesTrack): String? {
         matchCache.get(track.surrogateId)?.let { return it }
+        // Check the persistent store before paying for a YouTube match. Any
+        // persistence failure must never break playback, hence runCatching.
+        persistentMatches?.let { store ->
+            runCatching { store.getMatchedVideoId(track.surrogateId) }.getOrNull()?.let { cached ->
+                matchCache.put(track.surrogateId, cached)
+                return cached
+            }
+        }
         val videoId = matcher.match(
             artist = track.artistName ?: return null,
             title = track.trackName ?: return null,
             durationMs = track.trackTimeMillis ?: 0L,
         ) ?: return null
         matchCache.put(track.surrogateId, videoId)
+        runCatching { persistentMatches?.putMatchedVideoId(track.surrogateId, videoId) }
         return videoId
     }
 }

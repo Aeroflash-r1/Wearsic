@@ -55,7 +55,17 @@ fun main() {
     // and pre-resolves their streams in the background so taps are instant.
     val iTunes = ITunesService()
     val matcher = TrackMatcher(gateway)
-    val searchOrchestrator = MetadataSearchOrchestrator(iTunes, gateway, matcher)
+    // Persist surrogate -> videoId matches so saved songs replay instantly
+    // after a restart instead of re-running the YouTube match path.
+    val searchOrchestrator = MetadataSearchOrchestrator(
+        iTunes, gateway, matcher,
+        persistentMatches = object : MetadataSearchOrchestrator.MatchPersistence {
+            override fun getMatchedVideoId(surrogateId: String): String? =
+                database.getMatchedVideoId(surrogateId)
+            override fun putMatchedVideoId(surrogateId: String, videoId: String) =
+                database.putMatchedVideoId(surrogateId, videoId)
+        },
+    )
 
     if (apiKey == null) {
         System.err.println(

@@ -17,6 +17,12 @@ import java.util.UUID
  */
 class Database(dbPath: String) {
 
+    /** Persisted surrogate matches older than this are re-matched (self-healing). */
+    private val MATCH_STALE_MS: Long = 30L * 24 * 60 * 60 * 1000 // 30 days
+
+    /** Hard cap on persisted matches; the oldest are evicted beyond this. */
+    private val MAX_MATCH_ROWS = 2000
+
     private val lock = Any()
     private val conn: Connection = DriverManager.getConnection("jdbc:sqlite:$dbPath").apply {
         createStatement().use { it.execute("PRAGMA foreign_keys = ON") }
@@ -77,6 +83,15 @@ class Database(dbPath: String) {
                     )
                     """.trimIndent()
                 )
+                st.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS surrogate_matches (
+                        surrogate_id TEXT PRIMARY KEY,
+                        video_id     TEXT NOT NULL,
+                        matched_at   INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
             }
         }
     }
@@ -100,6 +115,67 @@ class Database(dbPath: String) {
             ps.setString(1, key)
             ps.setString(2, value)
             ps.executeUpdate()
+        }
+    }
+
+    // ---------------- Surrogate -> YouTube match persistence ----------------
+
+    /**
+     * Persists surrogate ("it:12345") -> real YouTube videoId matches so a
+     * server restart does not throw the matching work away: favorites and
+     * playlists replay instantly after a restart instead of re-running the
+     * multi-second YouTube match + extraction path.
+     *
+     * Entries are treated as stale (and re-matched) after [MATCH_STALE_MS] —
+     * a persisted match pointing at a since-deleted video self-heals — and
+     * the table is kept bounded by evicting oldest rows beyond
+     * [MAX_MATCH_ROWS].
+     */
+    fun getMatchedVideoId(surrogateId: String, nowMs: Long = System.currentTimeMillis()): String? =
+        synchronized(lock) {
+            conn.prepareStatement(
+                "SELECT video_id FROM surrogate_matches WHERE surrogate_id = ? AND matched_at > ?"
+            ).use { ps ->
+                ps.setString(1, surrogateId)
+                ps.setLong(2, nowMs - MATCH_STALE_MS)
+                ps.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
+            }
+        }
+
+    fun putMatchedVideoId(surrogateId: String, videoId: String, nowMs: Long = System.currentTimeMillis()): Unit =
+        synchronized(lock) {
+            conn.prepareStatement(
+                """
+                INSERT INTO surrogate_matches (surrogate_id, video_id, matched_at) VALUES (?, ?, ?)
+                ON CONFLICT(surrogate_id) DO UPDATE SET
+                    video_id = excluded.video_id,
+                    matched_at = excluded.matched_at
+                """.trimIndent()
+            ).use { ps ->
+                ps.setString(1, surrogateId)
+                ps.setString(2, videoId)
+                ps.setLong(3, nowMs)
+                ps.executeUpdate()
+            }
+            // Keep the table bounded: drop the oldest rows beyond the cap.
+            conn.prepareStatement(
+                """
+                DELETE FROM surrogate_matches WHERE surrogate_id NOT IN (
+                    SELECT surrogate_id FROM surrogate_matches ORDER BY matched_at DESC LIMIT ?
+                )
+                """.trimIndent()
+            ).use { ps ->
+                ps.setInt(1, MAX_MATCH_ROWS)
+                ps.executeUpdate()
+            }
+        }
+
+    /** Current number of persisted matches (exposed for tests). */
+    fun matchCount(): Int = synchronized(lock) {
+        conn.createStatement().use { st ->
+            st.executeQuery("SELECT COUNT(*) FROM surrogate_matches").use { rs ->
+                rs.next(); rs.getInt(1)
+            }
         }
     }
 

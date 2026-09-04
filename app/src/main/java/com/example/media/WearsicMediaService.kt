@@ -42,11 +42,14 @@ class WearsicMediaService : MediaSessionService() {
         //    downloader (each played song is saved as a real file), so pulling
         //    the WHOLE song through the cache too made every song exist twice
         //    on disk and cost 2x network on first play.
+        // bufferForPlaybackMs 1500: start audio after ~1.5s of buffer instead
+        // of 2.5s — noticeably faster tap-to-sound over the tunnel. Rebuffer
+        // stays conservative (5s) so a mid-song stall still waits properly.
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 /* minBufferMs = */ 30000,
                 /* maxBufferMs = */ 60000,
-                /* bufferForPlaybackMs = */ 2500,
+                /* bufferForPlaybackMs = */ 1500,
                 /* bufferForPlaybackAfterRebufferMs = */ 5000
             )
             .build()

@@ -82,9 +82,9 @@ bytecode patches (see `../server-patches/PATCHES.md`, kept as history only):
 
 ## Verified
 
-`./gradlew :wearsic-server:test` runs 74 offline unit/integration tests
+`./gradlew :wearsic-server:test` runs 80 offline unit/integration tests
 (matcher scoring, search fallback, SingleFlight dedup, database CRUD incl.
-wildcard playlist deletion, JSON contract, Ktor routes/auth/errors/rate
-limit, transcoder plumbing). CI runs them on every push, and the release
-pipeline boots the packaged server and asserts `/health` reports the source
-version before publishing.
+wildcard playlist deletion and persisted surrogate matches, JSON contract,
+Ktor routes/auth/errors/rate limit, transcoder plumbing). CI runs them on
+every push, and the release pipeline boots the packaged server and asserts
+`/health` reports the source version before publishing.

@@ -166,4 +166,60 @@ class OrchestratorFallbackTest {
 
         assertEquals(null, orchestrator.resolveStreamVideoId("it:999999"))
     }
+
+    // ---------------- Persistent match store (restart fast-replay) ----------------
+
+    private class InMemoryMatchStore : MetadataSearchOrchestrator.MatchPersistence {
+        val map = mutableMapOf<String, String>()
+        override fun getMatchedVideoId(surrogateId: String): String? = map[surrogateId]
+        override fun putMatchedVideoId(surrogateId: String, videoId: String) {
+            map[surrogateId] = videoId
+        }
+    }
+
+    @Test
+    fun `persisted match survives a restart without hitting YouTube again`() = runTest {
+        val metadata = FakeMetadataSource().apply { tracks = listOf(track(77)) }
+        val youtube = FakeYoutubeMetadataClient().apply {
+            results = listOf(
+                TrackDto(videoId = "realVideo", title = "Song 77", uploader = "Artist 77", durationMs = 200_000),
+            )
+        }
+        val store = InMemoryMatchStore()
+
+        // "Before restart": resolve pays the YouTube match once and persists it.
+        val before = MetadataSearchOrchestrator(metadata, youtube, TrackMatcher(youtube), store)
+        assertEquals("realVideo", before.resolveStreamVideoId("it:77"))
+        assertEquals("realVideo", store.map["it:77"])
+
+        // "After restart": fresh orchestrator (empty in-memory caches) but the
+        // same persistent store. Saved-song replay must not touch YouTube.
+        val youtubeAfterRestart = FakeYoutubeMetadataClient()
+        val after = MetadataSearchOrchestrator(metadata, youtubeAfterRestart, TrackMatcher(youtubeAfterRestart), store)
+        assertEquals("realVideo", after.resolveStreamVideoId("it:77"))
+        assertTrue(
+            youtubeAfterRestart.searchCalls.isEmpty(),
+            "restart replay must be served from the persisted match, got searches: ${youtubeAfterRestart.searchCalls}",
+        )
+    }
+
+    @Test
+    fun `persistence failure never breaks matching`() = runTest {
+        val metadata = FakeMetadataSource().apply { tracks = listOf(track(77)) }
+        val youtube = FakeYoutubeMetadataClient().apply {
+            results = listOf(
+                TrackDto(videoId = "realVideo", title = "Song 77", uploader = "Artist 77", durationMs = 200_000),
+            )
+        }
+        val broken = object : MetadataSearchOrchestrator.MatchPersistence {
+            override fun getMatchedVideoId(surrogateId: String): String? =
+                throw IllegalStateException("db gone")
+            override fun putMatchedVideoId(surrogateId: String, videoId: String) {
+                throw IllegalStateException("db gone")
+            }
+        }
+
+        val orchestrator = MetadataSearchOrchestrator(metadata, youtube, TrackMatcher(youtube), broken)
+        assertEquals("realVideo", orchestrator.resolveStreamVideoId("it:77"), "matching must proceed without persistence")
+    }
 }
