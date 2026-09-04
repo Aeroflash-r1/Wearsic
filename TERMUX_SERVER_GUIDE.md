@@ -38,8 +38,8 @@ pkg update -y && pkg upgrade -y
 
 ```bash
 pkg install -y curl
-curl -L -o ~/wearsic-server-termux-FIXED.zip \
-  "https://github.com/roopanganesan40-glitch/Wearos-music/releases/latest/download/wearsic-server-termux-FIXED.zip"
+curl -L -o ~/wearsic-server-termux-v<version>.zip \
+  "https://github.com/roopanganesan40-glitch/Wearos-music/releases/latest/download/wearsic-server-termux-v<version>.zip"
 ```
 
 ### Option B — copy from somewhere else
@@ -51,18 +51,18 @@ Download the zip on a PC/another phone, then move it to the Termux phone
 ```bash
 pkg install -y unzip
 termux-setup-storage          # tap ALLOW on the permission popup
-cp ~/storage/downloads/wearsic-server-termux-FIXED.zip ~/
+cp ~/storage/downloads/wearsic-server-termux-v<version>.zip ~/
 ```
 
 ### Extract and enter the folder
 
 ```bash
-cd ~ && unzip -o wearsic-server-termux-FIXED.zip
+cd ~ && unzip -o wearsic-server-termux-v<version>.zip
 cd ~/wearsic-server
 ```
 
 > If you downloaded from GitHub with Option A, also run:
-> `pkg install -y unzip && cd ~ && unzip -o wearsic-server-termux-FIXED.zip && cd wearsic-server`
+> `pkg install -y unzip && cd ~ && unzip -o wearsic-server-termux-v<version>.zip && cd wearsic-server`
 
 ---
 
@@ -210,7 +210,7 @@ Where your data lives:
 |---|---|
 | `Missing wearsic-server binary` | You're not inside `~/wearsic-server`; re-extract the zip fully (`bin/` and `lib/` must sit next to `run-termux.sh`) |
 | `Permission denied` on start | `chmod +x run-termux.sh bin/wearsic-server` |
-| Search returns nothing / errors | YouTube changed internals → update extractor: `cd ~/wearsic-server && ./update-newpipe.sh` (the supervisor also auto-runs it after repeated failures) |
+| Search returns nothing / errors | YouTube changed internals → update extractor: rebuild/update the server from the latest release ZIP (extractor updates ship as new releases) |
 | `Sign in to confirm you're not a bot` errors | Set a YouTube cookie: see `wearsic-server/README.md` → `WEARSIC_YOUTUBE_COOKIE` env var, or POST it to `/api/config/youtube-cookie` |
 | Server dies when phone sleeps | Run `termux-wake-lock` manually; disable battery optimization for Termux (Android Settings → Apps → Termux → Battery → Unrestricted) |
 | Watch shows "Host not found" | Wrong IP, different WiFi networks, or server not running — redo Section 5-A step 1 |

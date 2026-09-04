@@ -44,8 +44,9 @@ Wearsic adopts a clean, modular Model-View-ViewModel (MVVM) architecture with st
 
 ### 4. Downloads & Local Cache (Room Database & OKHttp)
 - **Room SQLite Store**: Keeps track of track state (`QUEUED`, `DOWNLOADING`, `COMPLETED`, `FAILED`, `CANCELLED`).
-- **Isolation**: Downloading stream files are written to `.part` files in `wearsic_downloads` and renamed atomically to `.mp3` upon completion to prevent file truncation. Playback cache uses `wearsic_playback_cache` under cache directories, avoiding conflicts with downloads.
+- **Isolation**: Downloading stream files are written to `.part` files in `wearsic_downloads` and renamed atomically to `.m4a` upon completion to prevent file truncation. Playback cache uses `wearsic_playback_cache` under cache directories, avoiding conflicts with downloads.
 - **Storage Protection**: StatFs check verifies that at least 15MB of storage remains free before beginning any download.
+- **One copy per song**: every streamed track is auto-cached (configurable cap, oldest-first eviction; toggle in Settings) and downloading a song purges its streamed copy — a song never exists twice on disk. Explicit downloads are permanent and never auto-evicted.
 
 ---
 

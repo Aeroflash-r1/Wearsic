@@ -1,8 +1,9 @@
 # Wearsic — Server API Contract (v1, as implemented)
 
 This document describes the REST API that the Wearsic Wear OS client actually
-speaks. It matches the shipped Ktor + NewPipe Extractor server
-(`wearsic-server/`, `wearsic-server-termux-FIXED.zip`) and the client parser in
+speaks. It matches the source-built Ktor + NewPipe Extractor server
+(`wearsic-server/src/`, canonical implementation; release ZIPs are generated
+from it by CI) and the client parser in
 `app/src/main/java/com/example/network/WearsicHttpApiClient.kt`.
 
 > Note: earlier revisions of this file described a `/api/v1/...` namespace with
@@ -150,3 +151,18 @@ The client POSTs exactly these five fields as JSON.
    this generation of clients; introduce `/api/v2/...` for breaking changes.
 3. Artwork: prefer serving pre-downscaled images (~150px) to protect watch
    bandwidth; the client will upscale ytimg URLs itself when needed.
+
+## Error Format (v1.4.1+)
+
+All non-2xx responses carry a JSON body: `{"error": "<human-readable message>"}`.
+Statuses: `400` invalid request or malformed body, `401` bad/missing API key,
+`404` unknown route or unmatchable video, `502` upstream CDN failure,
+`503` rate-limited (or ffmpeg missing for transcode-needing songs),
+`500` unexpected — message is generic, details only in the server log.
+
+## Rate Limiting (v1.4.1+)
+
+`GET /api/stream/{id}` is limited per client (API key, else source IP) to a
+sustained 30 requests/minute with short bursts above that. Exceeding it yields
+`503` with `{"error":"Too many stream requests; slow down and retry shortly"}`.
+Search/suggestions/favorites/playlists are NOT rate-limited.

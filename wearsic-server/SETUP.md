@@ -46,28 +46,45 @@ the new `settings` table (used to persist the YouTube cookie) is additive.
 
 ## What's different from the old (bytecode-patched) server
 
-- **Search**: filtered (`music_songs`) and unfiltered search run concurrently
-  via real Kotlin coroutines — no reflection, no per-request thread pool.
+The source below **supersedes** the patched jar — do not re-apply old
+bytecode patches (see `../server-patches/PATCHES.md`, kept as history only):
+
+- **Search**: iTunes-first (~150-300 ms, no YouTube round trip when iTunes has
+  results); the YouTube fallback runs only when iTunes returns nothing.
+  Filtered (`music_songs`) and unfiltered YouTube searches run concurrently
+  and the loser is cancelled.
 - **Stream resolution**: tries the iOS-spoofed YouTube client first (the one
   that actually works), falls back to the default client only if that fails.
-  The static `setFetchIosClient` toggle is reset in a `finally` block so it
-  never leaks into unrelated extractions.
+  Because `setFetchIosClient` is a process-global static, ALL extractions are
+  serialized behind a mutex — the set→fetch→reset sequence is atomic.
+- **Audio profile**: AAC-LC ~128 kbps preferred (hardware-decoded on the
+  watch's SoC); the old 70 kbps/WebM patch behavior is intentionally NOT
+  preserved. Rare Opus/WebM-only songs are transcoded to AAC by ffmpeg on the
+  server (503 with guidance if ffmpeg is missing).
 - **HTTP transport**: NewPipeExtractor's `Downloader` runs on a pooled,
-  keep-alive Ktor CIO client (shared connection pool) instead of raw
-  `HttpURLConnection`.
+  keep-alive Ktor CIO client instead of raw `HttpURLConnection`.
 - **Cookie handling**: read from `WEARSIC_YOUTUBE_COOKIE` on boot (env wins),
   falling back to the value persisted in SQLite, and updatable at runtime via
   `POST /api/config/youtube-cookie` — persisted so it survives restarts.
-- **Bitrate selection**: preserved the ~70 kbps target-bitrate logic (picks
-  the audio stream closest to the target, not the highest quality) — a
-  deliberate storage/bandwidth choice for a watch client.
+  Never logged, never echoed by the API.
+- **Concurrency/memory**: per-key `SingleFlight` deduplication (entries
+  removed on completion — the old per-key Mutex map leaked one entry per key
+  ever seen), bounded LRU caches with TTL on stream targets.
+- **Errors**: Ktor StatusPages maps every failure to JSON
+  (`{"error": "..."}`); malformed bodies answer 400 instead of empty 500s.
+- **Auth**: `WEARSIC_API_KEY` compared with `MessageDigest.isEqual`
+  (constant-time); startup warns loudly when the server is open.
+- **Rate limiting**: `/api/stream` is token-bucket limited per client
+  (30/min sustained, small bursts) so an open server isn't a free proxy.
 - **Everything else** (routes, response shapes, `TrackDto` fields, the
   `videoId == "*"` deletes-whole-playlist behavior) matches
   `API_CONTRACT.md`, so the Android client needs zero changes.
 
-## Verified (2026-09-03)
+## Verified
 
-`./gradlew :wearsic-server:build` passes. A live smoke test exercised:
-`/health`, favorites POST/GET round-trip, playlist create + add track +
-detail, playlist deletion via `videoId == "*"`, YouTube cookie set + survival
-across a restart, and a live `/api/search` returning real YouTube results.
+`./gradlew :wearsic-server:test` runs 74 offline unit/integration tests
+(matcher scoring, search fallback, SingleFlight dedup, database CRUD incl.
+wildcard playlist deletion, JSON contract, Ktor routes/auth/errors/rate
+limit, transcoder plumbing). CI runs them on every push, and the release
+pipeline boots the packaged server and asserts `/health` reports the source
+version before publishing.

@@ -1,8 +1,28 @@
-# Wearsic Server — Bytecode Patch Guide
+# Wearsic Server — Bytecode Patch Guide (LEGACY / HISTORICAL)
 
-The server ships as a compiled jar (`lib/wearsic-server-1.0.0.jar`, Kotlin, no
+> **STATUS: OBSOLETE — DO NOT RE-APPLY.**
+>
+> The server now ships as real Kotlin source in `wearsic-server/src/`, which
+> is the canonical implementation. Every behavior below was re-implemented in
+> source (with deliberate changes, noted in `wearsic-server/SETUP.md`):
+>
+> | Patch (jar era) | Source-era equivalent |
+> |---|---|
+> | 70 kbps / WebM preference (1, 2) | **Superseded**: AAC-LC ~128 kbps + server-side ffmpeg transcode |
+> | Stream TTL 6 h (3) | **Changed**: 1 h TTL (CDN URLs expire upstream) |
+> | `videoId == "*"` deletes playlist (4) | Re-implemented in `Database.deletePlaylistTrack` |
+> | Concurrent music search (5) | Re-implemented in `YoutubeGateway.searchMusic` (loser cancelled) |
+> | iOS-client-first extraction (6) | Re-implemented in `YoutubeGateway` behind a mutex (race fixed) |
+> | Ktor CIO downloader (7) | Re-implemented in `NewPipeDownloader` |
+> | Cookie wiring (8) | Re-implemented in `YoutubeSession` + `NewPipeDownloader` |
+>
+> The old `bin/`/`lib/` jars and committed ZIPs were removed from the
+> repository; release ZIPs are built from source by CI. This file is kept
+> only as historical documentation of the jar era.
+
+The server originally shipped as a compiled jar (`lib/wearsic-server-1.0.0.jar`, Kotlin, no
 source available). All features below were added via binary patches. This file
-documents every patch so future agents/humans can re-apply them after any
+documented every patch so future agents/humans could re-apply them after any
 rebuild or extractor update.
 
 ## Applied patches (all inside lib/wearsic-server-1.0.0.jar)
