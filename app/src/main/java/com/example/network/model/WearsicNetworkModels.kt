@@ -5,6 +5,7 @@ import com.example.model.Playlist
 import com.example.model.Album
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 @Serializable
 data class ServerHealthDto(
@@ -15,13 +16,20 @@ data class ServerHealthDto(
 
 @Serializable
 data class TrackDto(
-    val id: String,
+    // Server contract (API_CONTRACT.md): tracks ship as videoId/uploader/
+    // thumbnailUrl — NOT id/artist/artworkUrl. The kotlinx.serialization
+    // rewrite (1.0.3) dropped these mappings, so every server response failed
+    // to decode and search/favorites/playlists came back empty. The Kotlin
+    // property names stay the same so domain call sites don't change.
+    @SerialName("videoId") val id: String,
     val title: String,
-    val artist: String,
+    @SerialName("uploader") val artist: String,
     val album: String? = null,
-    @SerialName("artworkUrl") val artworkUrl: String? = null,
+    @SerialName("thumbnailUrl") val artworkUrl: String? = null,
     val durationMs: Long = 0L,
-    val streamUrl: String
+    // Servers never send a streamUrl — the client synthesizes it from the
+    // base URL + videoId. @Transient keeps it out of (de)serialization.
+    @Transient val streamUrl: String = ""
 ) {
     fun toDomainTrack(): Track {
         return Track(

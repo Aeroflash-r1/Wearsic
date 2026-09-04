@@ -99,7 +99,7 @@ class WearsicHttpApiClient(
                 Result.success(
                     SearchResponseDto(
                         query = query,
-                        tracks = dto.results
+                        tracks = dto.results.withStreamUrls(sanitizedUrl)
                     )
                 )
             }
@@ -135,7 +135,7 @@ class WearsicHttpApiClient(
                         emptyList()
                     }
                 }
-                Result.success(dto)
+                Result.success(dto.withStreamUrls(sanitizedUrl))
             }
         } catch (e: Exception) {
             Result.failure(IOException(e.message ?: "Could not load favorites"))
@@ -227,7 +227,7 @@ class WearsicHttpApiClient(
                 } catch (_: Exception) {
                     PlaylistWithTracksDto(id = playlistId, name = "Playlist")
                 }
-                Result.success(dto)
+                Result.success(dto.copy(tracks = dto.tracks.withStreamUrls(sanitizedUrl)))
             }
         } catch (e: Exception) {
             Result.failure(IOException(e.message ?: "Could not load playlist"))
@@ -302,7 +302,7 @@ class WearsicHttpApiClient(
                     } catch (_: Exception) {
                         com.example.network.model.RelatedResponseDto()
                     }
-                    Result.success(dto.results)
+                    Result.success(dto.results.withStreamUrls(sanitizedUrl))
                 }
             } catch (e: Exception) {
                 Result.failure(IOException(e.message ?: "Could not load related songs"))
@@ -356,7 +356,7 @@ class WearsicHttpApiClient(
                     } catch (_: Exception) {
                         PlaylistWithTracksDto(id = url, name = "Album")
                     }
-                    Result.success(dto)
+                    Result.success(dto.copy(tracks = dto.tracks.withStreamUrls(sanitizedUrl)))
                 }
             } catch (e: Exception) {
                 Result.failure(IOException(e.message ?: "Could not load album"))
@@ -420,6 +420,14 @@ class WearsicHttpApiClient(
         if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) return null
         return trimmed.trimEnd('/')
     }
+
+    /**
+     * Servers never send a streamUrl — it's derived from the base URL and the
+     * track's videoId (this is how the pre-serialization client built it).
+     * Without it, played tracks have an empty media URI and can't start.
+     */
+    private fun List<TrackDto>.withStreamUrls(baseUrl: String): List<TrackDto> =
+        map { it.copy(streamUrl = "$baseUrl/api/stream/${it.id}") }
 
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
