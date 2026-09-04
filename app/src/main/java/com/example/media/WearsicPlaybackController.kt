@@ -38,6 +38,12 @@ class WearsicPlaybackController(private val context: Context) {
     private var pendingPreviousTap = false
     private var lastTrackIndex = -1
 
+    /**
+     * Queue order before shuffle was enabled — retained so toggling shuffle
+     * off can restore the original order instead of leaving the shuffled one.
+     */
+    private var originalQueueOrder: List<Track> = emptyList()
+
     companion object {
         private const val MAX_RECONNECT_ATTEMPTS = 5
         private const val MAX_PLAYBACK_RETRIES = 3
@@ -179,7 +185,9 @@ class WearsicPlaybackController(private val context: Context) {
         val isPlaying = player.isPlaying
         val isBuffering = player.playbackState == Player.STATE_BUFFERING
         val currentPos = player.currentPosition.coerceAtLeast(0L)
-        val duration = if (player.duration > 0) player.duration else 0L
+        // Propagate C.TIME_UNSET for unknown durations instead of flattening
+        // it to 0 — the UI renders unknown as "--:--" rather than a fake 0:00.
+        val duration = player.duration
 
         val activePlaylist = _uiState.value.playlist
         val currentTrack = if (currentIdx in activePlaylist.indices) {
@@ -273,6 +281,9 @@ class WearsicPlaybackController(private val context: Context) {
         playbackRetryAttempts = 0
         pendingPreviousTap = false
 
+        // A fresh queue is not shuffled — drop any retained pre-shuffle order.
+        originalQueueOrder = emptyList()
+
         val items = WearsicMediaItemFactory.buildMediaItems(tracks)
         controller.stop()
         controller.clearMediaItems()
@@ -288,7 +299,9 @@ class WearsicPlaybackController(private val context: Context) {
                 currentTrackIndex = startIndex,
                 isPlaying = true,
                 currentPositionMs = 0L,
-                durationMs = if (currentTrack.durationMs > 0) currentTrack.durationMs else 6000L,
+                // C.TIME_UNSET is Media3's canonical "unknown duration". A fake
+                // value used to leak into progress/seek math and the session.
+                durationMs = if (currentTrack.durationMs > 0) currentTrack.durationMs else androidx.media3.common.C.TIME_UNSET,
                 playbackError = null
             )
         }
@@ -388,7 +401,13 @@ class WearsicPlaybackController(private val context: Context) {
             if (controller.hasNextMediaItem()) {
                 controller.seekToNextMediaItem()
             } else {
-                controller.seekTo(0, 0L)
+                // End of queue. With repeat-all the player itself wraps
+                // around, so this branch only runs with repeat OFF/ONE and
+                // the correct behavior is to STOP — not to silently restart
+                // the queue from index 0.
+                controller.pause()
+                controller.seekTo(controller.currentMediaItemIndex, 0L)
+                _uiState.update { it.copy(isPlaying = false, currentPositionMs = 0L) }
             }
         }
     }
@@ -419,7 +438,10 @@ class WearsicPlaybackController(private val context: Context) {
 
     fun seekTo(positionMs: Long) {
         mediaController?.let { controller ->
-            val clamped = positionMs.coerceIn(0L, controller.duration.takeIf { it > 0 } ?: 6000L)
+            // C.TIME_UNSET (unknown duration) must not clamp the target: only
+            // clamp against a real, positive duration.
+            val maxPos = controller.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+            val clamped = positionMs.coerceIn(0L, maxPos)
             controller.seekTo(clamped)
             _uiState.update { it.copy(currentPositionMs = clamped) }
         }
@@ -427,7 +449,8 @@ class WearsicPlaybackController(private val context: Context) {
 
     fun seekForward(ms: Long = 5000L) {
         mediaController?.let { controller ->
-            val newPos = (controller.currentPosition + ms).coerceAtMost(controller.duration.takeIf { it > 0 } ?: 6000L)
+            val maxPos = controller.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+            val newPos = (controller.currentPosition + ms).coerceAtMost(maxPos)
             controller.seekTo(newPos)
             _uiState.update { it.copy(currentPositionMs = newPos) }
         }
@@ -443,7 +466,7 @@ class WearsicPlaybackController(private val context: Context) {
 
     /**
      * SHUFFLE: reorders the upcoming portion of the queue (current song stays
-     * first and keeps playing). Toggling off restores original order.
+     * first and keeps playing). Toggling off restores the pre-shuffle order.
      */
     fun toggleShuffle() {
         val controller = mediaController ?: return
@@ -456,18 +479,30 @@ class WearsicPlaybackController(private val context: Context) {
         val position = controller.currentPosition
         val wasPlaying = controller.isPlaying
 
-        val newList = if (enabled) {
-            listOf(currentItem) + current.playlist.filterIndexed { i, _ -> i != idx }.shuffled()
+        val newList: List<Track>
+        var newIndex: Int
+        if (enabled) {
+            // Remember the original order so shuffle-off can restore it, and
+            // start the shuffled portion AFTER the current track (the current
+            // song does not jump around while it is playing).
+            originalQueueOrder = current.playlist
+            newList = listOf(currentItem) + current.playlist
+                .filterIndexed { i, _ -> i != idx }
+                .shuffled()
+            newIndex = 0
         } else {
-            // Restore server/queue order as remembered by ids? Simplest stable:
-            // keep current first then the rest in insertion order we still track.
-            listOf(currentItem) + current.playlist.filterIndexed { i, _ -> i != idx }
+            // Restore the retained pre-shuffle order, keeping the current
+            // song at its position in playback terms (it becomes the index of
+            // its original position, or 0 if the queue changed underneath).
+            val restored = originalQueueOrder.ifEmpty { current.playlist }
+            newList = restored
+            newIndex = restored.indexOfFirst { it.id == currentItem.id }.takeIf { it >= 0 } ?: 0
         }
 
         val items = WearsicMediaItemFactory.buildMediaItems(newList)
         controller.stop()
         controller.clearMediaItems()
-        controller.setMediaItems(items, 0, position)
+        controller.setMediaItems(items, newIndex, position)
         controller.repeatMode = current.repeatMode
         controller.prepare()
         if (wasPlaying) controller.play()
@@ -475,7 +510,7 @@ class WearsicPlaybackController(private val context: Context) {
         _uiState.update {
             it.copy(
                 playlist = newList,
-                currentTrackIndex = 0,
+                currentTrackIndex = newIndex,
                 currentPositionMs = position,
                 shuffleEnabled = enabled
             )

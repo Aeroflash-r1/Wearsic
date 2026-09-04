@@ -39,15 +39,21 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Run Robolectric unit tests
+      - name: Run app unit tests (Robolectric)
         run: ./gradlew :app:testDebugUnitTest --stacktrace
+
+      # A broken server must not merge silently while only Android tests run.
+      - name: Run server tests
+        run: ./gradlew :wearsic-server:test --stacktrace
 
       - name: Upload test reports on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: test-reports
-          path: app/build/reports/tests/
+          path: |
+            app/build/reports/tests/
+            wearsic-server/build/reports/tests/
           if-no-files-found: ignore
 
   build-debug:
@@ -66,8 +72,8 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace
+      - name: Assemble debug APK + server dist
+        run: ./gradlew :app:assembleDebug :wearsic-server:installDist --stacktrace
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
@@ -112,17 +118,41 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Assemble signed release APK
+      - name: Assemble signed release APK + server dist
         env:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew :app:assembleRelease --stacktrace
+        run: ./gradlew :app:assembleRelease :wearsic-server:installDist --stacktrace
 
-      - name: Stage release assets
+      - name: Package server from THIS build (never a committed zip)
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk "dist/Wearsic-${GITHUB_REF_NAME}.apk"
-          cp wearsic-server-termux-FIXED.zip "dist/wearsic-server-termux-FIXED.zip"
+          VERSION=$(grep -oP 'VERSION: String = "\K[^"]+' wearsic-server/src/main/kotlin/com/wearsic/server/ServerVersion.kt)
+          echo "Packaging server version $VERSION"
+          STAGE="dist/wearsic-server"
+          mkdir -p "$STAGE"
+          cp -r wearsic-server/build/install/wearsic-server/bin "$STAGE/"
+          cp -r wearsic-server/build/install/wearsic-server/lib "$STAGE/"
+          cp wearsic-server/run-termux.sh "$STAGE/"
+          cp wearsic-server/.env.example "$STAGE/"
+          cp wearsic-server/README.md "$STAGE/"
+          (cd dist && zip -qr "wearsic-server-termux-${GITHUB_REF_NAME}.zip" wearsic-server)
+
+      - name: Verify packaged server (boot + /health version)
+        run: |
+          VERSION=$(grep -oP 'VERSION: String = "\K[^"]+' wearsic-server/src/main/kotlin/com/wearsic/server/ServerVersion.kt)
+          cd dist/wearsic-server
+          PORT=18099 WEARSIC_DB_PATH=/tmp/verify.db nohup ./bin/wearsic-server > /tmp/verify.log 2>&1 &
+          SERVER_PID=$!
+          for i in $(seq 1 30); do
+            sleep 1
+            BODY=$(curl -sf http://127.0.0.1:18099/health || true)
+            if [ -n "$BODY" ]; then break; fi
+          done
+          kill $SERVER_PID 2>/dev/null || true
+          echo "Health response: $BODY"
+          echo "$BODY" | grep -q "\"version\":\"$VERSION\"" \
+            || { echo "::error::Packaged server /health does not report version $VERSION"; exit 1; }
 
       - name: Create GitHub Release
         env:
@@ -132,4 +162,4 @@ jobs:
             --title "Wearsic $GITHUB_REF_NAME" \
             --generate-notes \
             "dist/Wearsic-${GITHUB_REF_NAME}.apk" \
-            "dist/wearsic-server-termux-FIXED.zip"
+            "dist/wearsic-server-termux-${GITHUB_REF_NAME}.zip"

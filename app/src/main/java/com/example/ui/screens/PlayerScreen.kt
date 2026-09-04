@@ -685,7 +685,10 @@ private fun ActionCircle(
 }
 
 private fun formatMillis(millis: Long): String {
-    val totalSeconds = (millis / 1000).coerceAtLeast(0)
+    // C.TIME_UNSET (or any non-positive value) = unknown duration: render a
+    // neutral dash instead of a bogus 0:00 countdown.
+    if (millis <= 0L) return "--:--"
+    val totalSeconds = millis / 1000
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
     return String.format("%d:%02d", minutes, seconds)

@@ -9,7 +9,15 @@ import com.example.network.WearsicApiClient
 import com.example.network.WearsicHttpApiClient
 
 class AppContainer(private val context: Context) {
-    private val preferencesRepository by lazy { WearsicPreferencesRepository(context) }
+
+    /**
+     * The single preferences instance for the whole app. DataStore is
+     * process-singleton per file, but sharing one repository (instead of each
+     * consumer constructing its own) keeps one source of truth and one set of
+     * flow subscriptions.
+     */
+    val preferencesRepository: WearsicPreferencesRepository by lazy { WearsicPreferencesRepository(context) }
+
     private val apiClient: WearsicApiClient by lazy { WearsicHttpApiClient() }
 
     val musicRepository by lazy { WearsicMusicRepository(context, preferencesRepository, apiClient) }

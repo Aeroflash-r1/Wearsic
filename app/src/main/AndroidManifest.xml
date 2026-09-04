@@ -48,10 +48,6 @@
                 android:resource="@drawable/ic_launcher_foreground" />
         </service>
 
-        <service
-            android:name=".tile.TileCommandService"
-            android:exported="false" />
-
         <activity
             android:name=".MainActivity"
             android:exported="true"

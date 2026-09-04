@@ -99,7 +99,9 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
     private val musicRepository = container.musicRepository
     private val downloadRepository = container.downloadRepository
     private val recentRepository = container.recentRepository
-    private val preferencesRepository = WearsicPreferencesRepository(application.applicationContext)
+    // Same singleton instance the repositories already use — constructing a
+    // second one here created a duplicate DataStore flow owner.
+    private val preferencesRepository = container.preferencesRepository
     private val downloadManager = WearsicDownloadManager(application.applicationContext, downloadRepository)
     private val playbackController = WearsicPlaybackController(application.applicationContext)
 
