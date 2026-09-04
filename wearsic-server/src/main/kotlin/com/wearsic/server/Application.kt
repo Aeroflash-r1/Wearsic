@@ -2,7 +2,6 @@ package com.wearsic.server
 
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
-import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -15,7 +14,6 @@ import io.ktor.server.plugins.callloging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
-import io.ktor.server.response.respondText
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -43,8 +41,15 @@ fun main() {
             "will return 503. Install it in Termux with: pkg install ffmpeg")
     }
 
+    // /api/search is iTunes-first (fast metadata, no YouTube round trip in the
+    // request path); the orchestrator matches results to real YouTube videos
+    // and pre-resolves their streams in the background so taps are instant.
+    val iTunes = ITunesService()
+    val matcher = TrackMatcher(extractor)
+    val searchOrchestrator = MetadataSearchOrchestrator(iTunes, extractor, matcher)
+
     embeddedServer(ServerCIO, port = port, host = "0.0.0.0") {
-        module(extractor, database, audioProxy, apiKey)
+        module(extractor, database, audioProxy, apiKey, searchOrchestrator)
     }.start(wait = true)
 }
 
@@ -53,6 +58,7 @@ fun Application.module(
     database: Database,
     audioProxy: AudioProxy,
     apiKey: String?,
+    searchOrchestrator: MetadataSearchOrchestrator,
 ) {
     install(ContentNegotiation) {
         json(Json { ignoreUnknownKeys = true; encodeDefaults = true })
@@ -78,7 +84,11 @@ fun Application.module(
 
             get("/search") {
                 val q = call.request.queryParameters["q"].orEmpty()
-                call.respond(SearchResponse(extractor.search(q)))
+                // Metadata comes from iTunes (fast, no YouTube round trip
+                // here) — YouTube matching + stream resolution happens in the
+                // background right after this responds. Album search below is
+                // unchanged / still NewPipeExtractor-only for now.
+                call.respond(SearchResponse(searchOrchestrator.search(q)))
             }
 
             get("/suggestions") {
@@ -87,8 +97,17 @@ fun Application.module(
             }
 
             get("/related/{videoId}") {
-                val videoId = call.parameters["videoId"]!!
-                call.respond(RelatedResponse(extractor.related(videoId)))
+                val requestedId = call.parameters["videoId"]!!
+                // RADIO: the app asks for songs related to the CURRENT track,
+                // which may be a surrogate iTunes id ("it:12345") when it came
+                // from search. Resolve it to the real YouTube video first so
+                // NewPipeExtractor always gets a real id.
+                val realVideoId = searchOrchestrator.resolveStreamVideoId(requestedId)
+                if (realVideoId == null) {
+                    call.respond(HttpStatusCode.NotFound, ErrorResponse("Could not match '$requestedId' to a playable source"))
+                    return@get
+                }
+                call.respond(RelatedResponse(extractor.related(realVideoId)))
             }
 
             get("/search/albums") {
@@ -111,7 +130,21 @@ fun Application.module(
             }
 
             get("/stream/{videoId}") {
-                audioProxy.handle(call, call.parameters["videoId"]!!)
+                val requestedId = call.parameters["videoId"]!!
+                // Resolves a surrogate iTunes id ("it:12345") to a real
+                // YouTube videoId — usually already cached from the background
+                // prefetch kicked off at search time, or recovered from iTunes
+                // by id when the server restarted since. Real YouTube ids
+                // (related/playlist results) pass through unchanged.
+                val realVideoId = searchOrchestrator.resolveStreamVideoId(requestedId)
+                if (realVideoId == null) {
+                    call.respond(
+                        HttpStatusCode.NotFound,
+                        ErrorResponse("Could not match '$requestedId' to a playable source")
+                    )
+                    return@get
+                }
+                audioProxy.handle(call, realVideoId)
             }
 
             // ---- Favorites ----
