@@ -1,15 +1,18 @@
 package com.example.data
 
 import android.content.Context
+import com.example.data.db.RecentTrackDao
 import com.example.data.db.WearsicDatabase
 import com.example.data.db.WearsicRecentTrackEntity
 import com.example.model.Track
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-class WearsicRecentRepository(context: Context) {
-
-    private val recentTrackDao = WearsicDatabase.getInstance(context).recentTrackDao()
+class WearsicRecentRepository(
+    context: Context,
+    // Injectable for tests (in-memory Room); production uses the singleton.
+    private val recentTrackDao: RecentTrackDao = WearsicDatabase.getInstance(context).recentTrackDao(),
+) {
 
     val recentTracksFlow: Flow<List<Track>> = recentTrackDao.getRecentTracksFlow()
         .map { entities -> entities.map { it.toDomainTrack() } }

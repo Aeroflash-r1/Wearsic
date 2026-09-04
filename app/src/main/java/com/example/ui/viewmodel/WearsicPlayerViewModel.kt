@@ -240,6 +240,11 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
     @Volatile
     private var lastWarmUpTrackId: String? = null
 
+    /** How many tracks of a freshly-opened list get pre-warmed. */
+    private companion object {
+        const val WARM_UP_LIST_HEAD_COUNT = 3
+    }
+
     init {
         // Sync the optional API key into the HTTP client for every request.
         viewModelScope.launch {
@@ -302,6 +307,37 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
             }
         }
     }
+
+    /**
+     * Pre-warms the server for the first few tracks of a list the user just
+     * opened (Favorites / a playlist): a 1-byte ranged request makes the
+     * server resolve + cache the real stream URL, so tapping any of those
+     * songs starts playing without the multi-second extraction wait. Each
+     * list is warmed once per session (idPrefix keeps per-list bookkeeping
+     * separate when the same song sits in two lists).
+     */
+    private fun warmFirstTracks(tracks: List<Track>, idPrefix: String) {
+        tracks.take(WARM_UP_LIST_HEAD_COUNT).forEach { track ->
+            val key = "$idPrefix${track.id}"
+            if (key in warmedListHeads || !track.mediaUri.startsWith("http")) return@forEach
+            warmedListHeads.add(key)
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    warmUpClient.newCall(
+                        okhttp3.Request.Builder()
+                            .url(track.mediaUri)
+                            .header("Range", "bytes=0-1")
+                            .build()
+                    ).execute().use { /* body ignored — resolution side effect is the point */ }
+                } catch (_: Exception) {
+                    // Warm-up is best-effort; playback re-resolves anyway.
+                }
+            }
+        }
+    }
+
+    /** List heads already warmed this session ("fav:<id>" / "pl:<pl>:<id>"). */
+    private val warmedListHeads = mutableSetOf<String>()
 
     private fun warmUpStream(nextTrack: Track) {
         if (!nextTrack.mediaUri.startsWith("http")) return
@@ -764,6 +800,7 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
                 if (current.id.isNotBlank()) {
                     playbackController.setCurrentTrackFavorite(tracks.any { it.id == current.id })
                 }
+                warmFirstTracks(tracks, "fav:")
             }.onFailure { err ->
                 _favoritesState.update {
                     it.copy(isLoading = false, errorMessage = err.message ?: "Could not load favorites")
@@ -832,6 +869,7 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
                 _playlistDetailState.update {
                     it.copy(playlistId = playlistId, tracks = tracks, isLoading = false, errorMessage = null)
                 }
+                warmFirstTracks(tracks, "pl:$playlistId:")
             }.onFailure { err ->
                 // Ignore stale results after switching playlists quickly.
                 if (_playlistDetailState.value.playlistId != playlistId) return@launch

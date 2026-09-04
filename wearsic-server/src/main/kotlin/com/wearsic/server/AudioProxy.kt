@@ -6,7 +6,6 @@ import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.content.OutgoingContent
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.header
 import io.ktor.server.response.header
@@ -14,6 +13,12 @@ import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytesWriter
 import io.ktor.utils.io.copyAndClose
 import org.slf4j.LoggerFactory
+
+/**
+ * CDN statuses that mean "this RESOLVED url is dead" — the target was cached
+ * but YouTube revoked/expired it before the TTL ran out. Trigger self-heal.
+ */
+private val DEAD_URL_STATUSES = setOf(403, 404, 410)
 
 class AudioProxy(
     private val extractor: YoutubeMetadataClient,
@@ -56,7 +61,36 @@ class AudioProxy(
             return
         }
 
-        try {
+        val outcome = proxyTarget(call, target, rangeHeader)
+
+        // Dead-URL self-heal: 403/404/410 mean the cached CDN URL expired or
+        // was revoked upstream (it can die well inside the 1h cache TTL).
+        // Drop the stale entry, re-resolve once, and stream the fresh URL —
+        // the watch gets audio instead of an error. One retry only.
+        if (outcome == UpstreamOutcome.DEAD_URL) {
+            val fresh = (extractor as? YoutubeGateway)?.invalidateStreamTarget(videoId)
+            if (fresh != null) {
+                logger.info("Self-healed stale stream URL for {}", videoId)
+                if (transcoder.needsTranscode(fresh.mimeType)) {
+                    transcoder.handle(call, fresh.url, rangeHeader)
+                } else {
+                    proxyTarget(call, fresh, rangeHeader)
+                }
+                return
+            }
+            logger.warn("Re-resolve after dead URL failed for {}", videoId)
+        }
+    }
+
+    private enum class UpstreamOutcome { STREAMED, DEAD_URL, OTHER_ERROR }
+
+    /** Streams one resolved [target] to the watch. Never throws for client aborts. */
+    private suspend fun proxyTarget(
+        call: ApplicationCall,
+        target: StreamTarget,
+        rangeHeader: String?,
+    ): UpstreamOutcome {
+        return try {
             client.prepareGet(target.url) {
                 // Always ask upstream for a byte range: YouTube's CDN throttles
                 // non-range (200) audio responses and closes them after ~256KB,
@@ -73,7 +107,11 @@ class AudioProxy(
                         HttpStatusCode.BadGateway,
                         ErrorResponse("Upstream audio unavailable (HTTP ${upstream.status.value})")
                     )
-                    return@execute
+                    return@execute if (upstream.status.value in DEAD_URL_STATUSES) {
+                        UpstreamOutcome.DEAD_URL
+                    } else {
+                        UpstreamOutcome.OTHER_ERROR
+                    }
                 }
                 upstream.headers[HttpHeaders.ContentRange]?.let { call.response.header(HttpHeaders.ContentRange, it) }
                 call.response.header(HttpHeaders.AcceptRanges, "bytes")
@@ -87,11 +125,13 @@ class AudioProxy(
                 call.respondBytesWriter(contentType = io.ktor.http.ContentType.parse(target.mimeType), status = status) {
                     upstream.bodyAsChannel().copyAndClose(this)
                 }
+                UpstreamOutcome.STREAMED
             }
         } catch (e: Exception) {
             // Client disconnected/skipped mid-stream, or upstream failed —
             // not worth a scary 500, this happens routinely on track skips.
-            logger.info("Stream proxy ended early for {}: {}", videoId, e.message)
+            logger.info("Stream proxy ended early: {}", e.message)
+            UpstreamOutcome.OTHER_ERROR
         }
     }
 }

@@ -4,6 +4,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -36,6 +41,9 @@ class MetadataSearchOrchestrator(
 ) {
     companion object {
         private const val PREFETCH_COUNT = 6
+
+        /** Pause between prefetch extractions so user taps can jump ahead. */
+        private const val PREFETCH_EXTRACT_STAGGER_MS = 300L
     }
 
     /** Read/write view over persisted surrogate matches (e.g. SQLite). */
@@ -90,14 +98,30 @@ class MetadataSearchOrchestrator(
 
     private var prefetchJob: Job? = null
 
+    /**
+     * Pipelined prefetch, top result first:
+     *  - MATCHING (iTunes -> YouTube search) runs concurrently for all tracks:
+     *    matching is cheap-ish and NOT subject to the extraction mutex.
+     *  - EXTRACTION (stream URL resolution) is serialized by the gateway's
+     *    global mutex, so it runs strictly top-first: the song the user is
+     *    most likely to tap is resolved before anything else, instead of
+     *    competing with 5 sibling extractions.
+     *  - 300ms stagger between extraction steps lets a user tap that arrives
+     *    mid-prefetch jump the queue ahead of the remaining prefetch work.
+     */
     private fun prefetch(tracks: List<ITunesTrack>) {
         prefetchJob?.cancel()
         prefetchJob = backgroundScope.launch {
-            tracks.forEach { track ->
-                // Sequential: cancellation between steps is honored and the
-                // first (most likely tapped) result is always warmed first.
-                val videoId = resolveAndCacheMatch(track) ?: return@forEach
-                youtube.streamTarget(videoId) // warms the stream-resolution cache too
+            coroutineScope {
+                val matched = tracks.map { track ->
+                    async { track to resolveAndCacheMatch(track) }
+                }.awaitAll().filter { it.second != null }
+
+                matched.forEach { (_, videoId) ->
+                    if (!isActive) return@forEach
+                    youtube.streamTarget(videoId!!) // warms the stream-resolution cache
+                    delay(PREFETCH_EXTRACT_STAGGER_MS)
+                }
             }
         }
     }

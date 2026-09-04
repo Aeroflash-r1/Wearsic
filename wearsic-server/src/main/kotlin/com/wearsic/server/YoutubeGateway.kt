@@ -9,6 +9,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.downloader.Downloader
@@ -74,6 +75,12 @@ class YoutubeGateway(
         // re-extraction), short enough that expired CDN URLs never linger.
         const val STREAM_CACHE_TTL_MILLIS: Long = 60 * 60 * 1000L // 1 hour
 
+        /** NOT_PLAYABLE markers live much shorter than real targets. */
+        internal const val NOT_PLAYABLE_TTL_MILLIS: Long = 5 * 60 * 1000L // 5 minutes
+
+        /** Wall-clock budget for one full stream resolution. */
+        internal const val EXTRACTION_TIMEOUT_MS: Long = 25_000L
+
         /** Client order for stream extraction: iOS first, default fallback. */
         internal val CLIENT_ORDER: List<Boolean> = listOf(true, false)
 
@@ -90,7 +97,8 @@ class YoutubeGateway(
     // unbounded leak). SingleFlight removes each entry when the operation
     // completes, so memory stays flat over weeks of uptime.
     private val searchSingleFlight = SingleFlight<String, List<TrackDto>>()
-    private val streamSingleFlight = SingleFlight<String, StreamTarget>()
+    // Nullable V: a timed-out resolution returns null (transient — never cached).
+    private val streamSingleFlight = SingleFlight<String, StreamTarget?>()
 
     // ---------------- Search ----------------
 
@@ -228,6 +236,18 @@ class YoutubeGateway(
 
     // ---------------- Stream resolution ----------------
 
+    /**
+     * Hard wall-clock budget for ONE full stream resolution (both client
+     * attempts + their inner NewPipe requests). NewPipeDownloader already
+     * times out individual HTTP requests (20s), but an extraction chains
+     * several of them plus two client attempts inside the serialized
+     * extraction mutex — without this cap one bad video could hold the queue
+     * for a minute+ and every tap behind it would feel dead. Timed-out work
+     * is treated as transient (not cached as NOT_PLAYABLE).
+     */
+    private suspend fun <T> withExtractionTimeout(block: suspend () -> T): T? =
+        withTimeoutOrNull(EXTRACTION_TIMEOUT_MS) { block() }
+
     override suspend fun streamTarget(videoId: String): StreamTarget? {
         val now = System.currentTimeMillis()
         streamCache.get(videoId)?.let { cached ->
@@ -240,26 +260,51 @@ class YoutubeGateway(
                 if (cached.expiresAtMillis > now) return@run cached.target
             }
 
-            val audio = extractionMutex.withLock {
-                withContext(Dispatchers.IO) {
-                    resolveAudioStreamWithFallback(videoId)
+            val audio = withExtractionTimeout {
+                extractionMutex.withLock {
+                    withContext(Dispatchers.IO) {
+                        resolveAudioStreamWithFallback(videoId)
+                    }
                 }
             }
 
-            val target = if (audio != null) {
-                StreamTarget(
-                    url = audio.content,
-                    mimeType = audio.format?.mimeType ?: "audio/webm",
-                )
-            } else {
-                // Nothing playable found for this id (e.g. audio-only video
-                // removed). Cache a NOT_PLAYABLE marker briefly so repeat
-                // misses don't hammer extraction.
-                StreamTarget(url = NOT_PLAYABLE, mimeType = NOT_PLAYABLE)
+            when {
+                audio != null -> {
+                    val target = StreamTarget(
+                        url = audio.content,
+                        mimeType = audio.format?.mimeType ?: "audio/webm",
+                    )
+                    streamCache.put(videoId, CachedStreamTarget(target, System.currentTimeMillis() + STREAM_CACHE_TTL_MILLIS))
+                    target
+                }
+                // Null inside the budget = extraction genuinely found nothing
+                // playable (e.g. audio-only video removed). Cache a NOT_PLAYABLE
+                // marker briefly so repeat misses don't hammer extraction.
+                // A TIMEOUT leaves the cache empty so the next tap retries.
+                else -> {
+                    streamCache.put(
+                        videoId,
+                        CachedStreamTarget(
+                            StreamTarget(NOT_PLAYABLE, NOT_PLAYABLE),
+                            System.currentTimeMillis() + NOT_PLAYABLE_TTL_MILLIS,
+                        ),
+                    )
+                    null
+                }
             }
-            streamCache.put(videoId, CachedStreamTarget(target, System.currentTimeMillis() + STREAM_CACHE_TTL_MILLIS))
-            target
-        }.takeIf { it.url != NOT_PLAYABLE }
+        }.takeIf { it?.url != NOT_PLAYABLE }
+    }
+
+    /**
+     * Dead-URL self-heal: the proxy observed the CDN rejecting this video's
+     * resolved URL (403/404/410). Drop the stale entry so the next resolution
+     * does fresh extraction, then return the new target (null = re-resolve
+     * also failed; the proxy answers the error it already has).
+     */
+    suspend fun invalidateStreamTarget(videoId: String): StreamTarget? {
+        streamCache.remove(videoId)
+        logger.info("Invalidated stale stream target for {} — re-resolving", videoId)
+        return streamTarget(videoId)
     }
 
     /**

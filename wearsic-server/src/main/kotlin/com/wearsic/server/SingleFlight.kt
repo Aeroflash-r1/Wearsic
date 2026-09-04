@@ -19,8 +19,12 @@ import java.util.concurrent.ConcurrentHashMap
  * No lock is held while a computation runs, so unrelated keys never block
  * each other. Known trade-off: if the winning caller is cancelled, awaiting
  * losers see the cancellation too and their own callers retry naturally.
+ *
+ * V is intentionally unbounded (nullable allowed): a computation may decide
+ * its outcome is "nothing" (e.g. a timed-out extraction), and joiners must
+ * observe that same outcome instead of re-running the work.
  */
-class SingleFlight<K : Any, V : Any> {
+class SingleFlight<K : Any, V> {
 
     private val inFlight = ConcurrentHashMap<K, Deferred<V>>()
 
