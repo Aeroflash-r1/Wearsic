@@ -292,16 +292,17 @@ fun SearchScreen(
                 }
             }
 
-            // Empty State
+            // Empty State — surface the real error when the request failed
+            // instead of hiding it behind a misleading "No results found".
             if (searchState.hasSearched && searchState.results.isEmpty() && !searchState.isSearching) {
                 item {
                     Text(
                         text = if (searchState.errorMessage != null) {
-                            "No results found"
+                            "Search failed: ${searchState.errorMessage}"
                         } else {
                             "No tracks found for \"${searchState.query}\""
                         },
-                        color = WearsicTextMuted,
+                        color = if (searchState.errorMessage != null) com.example.ui.theme.WearsicError else WearsicTextMuted,
                         fontSize = 11.sp,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(vertical = 8.dp)
