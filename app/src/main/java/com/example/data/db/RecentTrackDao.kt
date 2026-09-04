@@ -15,6 +15,13 @@ interface RecentTrackDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: WearsicRecentTrackEntity)
 
+    /** Same song recorded under a different id (surrogate vs YouTube id). */
+    @Query(
+        "DELETE FROM recent_tracks WHERE trackId != :trackId " +
+            "AND LOWER(title) = LOWER(:title) AND LOWER(artist) = LOWER(:artist)"
+    )
+    suspend fun deleteDuplicatesOf(trackId: String, title: String, artist: String)
+
     @Query("DELETE FROM recent_tracks WHERE trackId = :trackId")
     suspend fun deleteByTrackId(trackId: String)
 

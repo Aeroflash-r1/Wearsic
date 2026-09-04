@@ -159,6 +159,45 @@ class TrackMatcherTest {
         best()
         assertEquals("Crowded House - Weather with You", fakeYoutube.lastQuery)
     }
+
+    // ---------------- Accuracy improvements (v1.4.3) ----------------
+
+    /**
+     * Regression: the old fallback returned the RAW TOP search hit when no
+     * candidate cleared MIN_CONFIDENCE — often a vlog/mix sharing one word.
+     * Now a candidate with >=50% title-word overlap must win the fallback.
+     */
+    @Test
+    fun `weak pool falls back to title-overlap candidate not the raw top hit`() = runTest {
+        fakeYoutube.results = listOf(
+            candidate("vlog", "Random vlog thing", durationSec = 400),
+            candidate("live", "Weather With You (Live)", durationSec = 400),
+        )
+        assertEquals("live", best(), "fallback must prefer title resemblance over search rank")
+    }
+
+    @Test
+    fun `partial title overlap earns proportional credit`() = runTest {
+        // Distant durations (so duration scoring is equal) — the 3-of-3-words
+        // candidate must beat the unrelated one via title resemblance.
+        fakeYoutube.results = listOf(
+            candidate("unrelated", "Completely different thing", durationSec = 400),
+            candidate("partial", "Weather With You (Live Version)", durationSec = 400),
+        )
+        assertEquals("partial", best())
+    }
+
+    @Test
+    fun `artist in uploader beats artist only in title`() = runTest {
+        fakeYoutube.results = listOf(
+            // Cover-style upload: artist only inside the video title.
+            candidate("coverish", "Weather with You by Crowded House", uploader = "FanUploads", durationSec = 226),
+            // Genuine channel carrying the artist name (spaced, like real
+            // channel names "Crowded House - Topic" / "Crowded House VEVO").
+            candidate("channel", "Weather with You", uploader = "Crowded House VEVO", durationSec = 226),
+        )
+        assertEquals("channel", best())
+    }
 }
 
 /** Minimal in-memory [YoutubeMetadataClient] for matcher/orchestrator tests. */

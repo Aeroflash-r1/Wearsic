@@ -28,6 +28,11 @@ class WearsicRecentRepository(context: Context) {
                 playedAt = System.currentTimeMillis()
             )
         )
+        // The same song can reach the watch under different ids — surrogate
+        // `it:12345` from search vs the real YouTube id from radio/playlists —
+        // so the trackId PK alone cannot dedupe. Drop other rows that are the
+        // same song by title+artist, keeping the freshest (just-upserted) row.
+        recentTrackDao.deleteDuplicatesOf(track.id, track.title, track.artist)
     }
 
     suspend fun clearRecent() {

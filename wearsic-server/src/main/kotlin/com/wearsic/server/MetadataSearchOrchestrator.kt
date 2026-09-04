@@ -2,6 +2,7 @@ package com.wearsic.server
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
@@ -48,6 +49,14 @@ class MetadataSearchOrchestrator(
     // back to the client.
     private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    // One prefetch campaign at a time, processed SEQUENTIALLY (top result
+    // first). Previously every search launched all six concurrently and a new
+    // search never cancelled the previous one's work — after a few searches
+    // up to ~18 stale extractions piled up behind the global extraction
+    // mutex, making a user tap wait many seconds behind tracks nobody asked
+    // for. Cancelling the superseded campaign + going one-by-one keeps the
+    // mutex queue short so interactive plays jump ahead immediately.
+
     private val trackInfoCache = BoundedCache<String, ITunesTrack>(maxSize = 256)
     private val matchCache = BoundedCache<String, String>(maxSize = 256) // surrogateId -> real YouTube videoId
 
@@ -79,10 +88,15 @@ class MetadataSearchOrchestrator(
         return youtube.search(query)
     }
 
+    private var prefetchJob: Job? = null
+
     private fun prefetch(tracks: List<ITunesTrack>) {
-        tracks.forEach { track ->
-            backgroundScope.launch {
-                val videoId = resolveAndCacheMatch(track) ?: return@launch
+        prefetchJob?.cancel()
+        prefetchJob = backgroundScope.launch {
+            tracks.forEach { track ->
+                // Sequential: cancellation between steps is honored and the
+                // first (most likely tapped) result is always warmed first.
+                val videoId = resolveAndCacheMatch(track) ?: return@forEach
                 youtube.streamTarget(videoId) // warms the stream-resolution cache too
             }
         }
