@@ -28,18 +28,28 @@ import io.ktor.server.routing.routing
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import org.slf4j.event.Level
+import java.io.File
 import java.security.MessageDigest
 
 fun main() {
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
     val dbPath = System.getenv("WEARSIC_DB_PATH") ?: "wearsic.db"
+    // Self-healing state (staged engine updates + update.json handoff).
+    // WEARSIC_STATE_DIR lets deployments keep it next to the DB by default.
+    val stateDir = java.io.File(
+        System.getenv("WEARSIC_STATE_DIR")
+            ?: File(dbPath).absoluteFile.parentFile?.let { File(it, "wearsic-state").path }
+            ?: "wearsic-state"
+    )
+    val autoUpdate = System.getenv("WEARSIC_AUTO_UPDATE") != "0"
 
     val database = Database(dbPath)
     YoutubeSession.init(database)
     // v1.4.4: wipe matches persisted by older, version-blind matcher builds
     // so every song re-matches with the fixed logic once.
     database.clearStaleMatchesOnce("matcher_version_wipe", "1.4.4")
-    val gateway = YoutubeGateway()
+    val healthMeter = ExtractionHealthMeter()
+    val gateway = YoutubeGateway(healthMeter = healthMeter)
     // Tuned like NewPipeDownloader (12s/20s): the default CIO client has NO
     // timeouts, so one stalled googlevideo.com CDN connection parked a server
     // worker forever and the watch spun buffering until it heated up.
@@ -71,6 +81,18 @@ fun main() {
     val audioProxy = AudioProxy(gateway, proxyClient, transcoder)
     val apiKey = System.getenv("WEARSIC_API_KEY")?.trim()?.takeIf { it.isNotEmpty() }
 
+    // Self-healing: canary watchdog + engine auto-update pipeline.
+    val canary = ExtractionCanary(probe = { gateway.canaryProbe() })
+    val engineUpdater = EngineUpdater(proxyClient, stateDir)
+    val selfHeal = SelfHealOrchestrator(
+        healthMeter = healthMeter,
+        canary = canary,
+        updater = engineUpdater,
+        stateDir = stateDir,
+        autoUpdate = autoUpdate,
+    )
+    selfHeal.start()
+
     // /api/search is YouTube Music-first: official titles/artists/durations
     // with REAL videoIds (no surrogate matching step). The orchestrator
     // pre-resolves streams in the background so taps are instant.
@@ -93,7 +115,12 @@ fun main() {
     }
 
     embeddedServer(ServerCIO, port = port, host = "0.0.0.0") {
-        module(gateway, database, audioProxy, apiKey, searchOrchestrator)
+        module(
+            gateway, database, audioProxy, apiKey, searchOrchestrator,
+            healthMeter = healthMeter,
+            canary = canary,
+            engineUpdater = engineUpdater,
+        )
     }.start(wait = true)
 }
 
@@ -104,6 +131,9 @@ fun Application.module(
     apiKey: String?,
     searchOrchestrator: MetadataSearchOrchestrator,
     transcoder: Transcoder = audioProxy.transcoder,
+    healthMeter: ExtractionHealthMeter? = null,
+    canary: ExtractionCanary? = null,
+    engineUpdater: EngineUpdater? = null,
 ) {
     install(ContentNegotiation) {
         json(Json { ignoreUnknownKeys = true; encodeDefaults = true })
@@ -146,7 +176,32 @@ fun Application.module(
 
     routing {
         get("/health") {
-            call.respond(HealthResponse(transcoderAvailable = transcoder.available))
+            val extraction = healthMeter?.let {
+                ExtractionHealthDto(
+                    successCount = it.successCount,
+                    failureCount = it.failureCount,
+                    failureRatePercent = it.failureRatePercent(),
+                    consecutiveFailures = it.consecutiveFailures(),
+                    lastError = it.lastError,
+                )
+            }
+            val update = engineUpdater?.let {
+                UpdateStatusDto(
+                    status = if (it.hasStagedUpdate()) "staged" else "idle",
+                    latestKnownVersion = it.latestKnownVersion,
+                    lastCheckAtMillis = it.lastCheckAtMillis,
+                    lastError = it.lastCheckError,
+                    stagedVersion = it.stagedState()?.version,
+                )
+            }
+            call.respond(
+                HealthResponse(
+                    transcoderAvailable = transcoder.available,
+                    extraction = extraction,
+                    canaryHealthy = canary?.lastProbeHealthy,
+                    update = update,
+                )
+            )
         }
 
         route("/api") {

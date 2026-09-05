@@ -56,13 +56,16 @@ This client is fully hardened to support any standard Ktor/OkHttp endpoint follo
 
 ### 1. Health Verification
 - **Route**: `GET /health`
-- **Response Model**:
+- **Response Model** (self-healing fields are optional and ignored by older clients):
 ```json
 {
   "status": "ok",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "serverName": "Wearsic Engine",
-  "transcoderAvailable": true
+  "transcoderAvailable": true,
+  "extraction": { "successCount": 42, "failureCount": 1, "failureRatePercent": 2, "consecutiveFailures": 0, "lastError": null },
+  "canaryHealthy": null,
+  "update": { "status": "idle", "latestKnownVersion": null, "lastCheckAtMillis": 0, "lastError": null, "stagedVersion": null }
 }
 ```
 
@@ -175,5 +178,5 @@ keytool -genkeypair -v -keystore my-upload-key.jks -alias upload \
 Then cut a release:
 
 ```bash
-git tag v1.6.0 && git push origin v1.6.0
+git tag v1.7.0 && git push origin v1.7.0
 ```

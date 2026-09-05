@@ -53,6 +53,26 @@ data class PlaylistSummaryDto(
 data class CreatePlaylistRequest(val name: String)
 
 @Serializable
+data class ExtractionHealthDto(
+    val successCount: Int = 0,
+    val failureCount: Int = 0,
+    val failureRatePercent: Int = 0,
+    val consecutiveFailures: Int = 0,
+    val lastError: String? = null,
+)
+
+@Serializable
+data class UpdateStatusDto(
+    // "idle" | "checking" | "staged" — "staged" means a new engine is
+    // downloaded and waiting for the supervisor to apply on restart.
+    val status: String = "idle",
+    val latestKnownVersion: String? = null,
+    val lastCheckAtMillis: Long = 0,
+    val lastError: String? = null,
+    val stagedVersion: String? = null,
+)
+
+@Serializable
 data class HealthResponse(
     val status: String = "ok",
     // ServerVersion.VERSION is the single source of truth (build.gradle.kts
@@ -63,6 +83,12 @@ data class HealthResponse(
     // songs YouTube only offers in Opus/WebM. Purely informational — the app
     // parses health leniently and ignores unknown fields.
     val transcoderAvailable: Boolean = false,
+    // Self-healing observability: is the extraction engine succeeding, is the
+    // canary (probe of a permanent video) passing, and is an engine update
+    // staged? Optional + nullable so old monitoring scripts stay compatible.
+    val extraction: ExtractionHealthDto? = null,
+    val canaryHealthy: Boolean? = null,
+    val update: UpdateStatusDto? = null,
 )
 
 @Serializable

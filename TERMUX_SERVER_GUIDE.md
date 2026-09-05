@@ -55,7 +55,7 @@ Or, if you already know the release tag (e.g. `v1.5.0`):
 
 ```bash
 curl -L -o ~/wearsic-server-termux.zip \
-  "https://github.com/Aeroflash-r1/wearsic/releases/latest/download/wearsic-server-termux-v1.6.0.zip"
+  "https://github.com/Aeroflash-r1/wearsic/releases/latest/download/wearsic-server-termux-v1.7.0.zip"
 ```
 
 ### Option B — copy from somewhere else
@@ -113,7 +113,7 @@ curl http://127.0.0.1:8080/health
 Expected response:
 
 ```json
-{"status":"ok","version":"1.6.0","serverName":"Wearsic Engine","transcoderAvailable":true}
+{"status":"ok","version":"1.7.0","serverName":"Wearsic Engine","transcoderAvailable":true}
 ```
 
 (The exact `version` value depends on the release you installed — it always
@@ -222,6 +222,42 @@ Where your data lives:
 - `~/wearsic-server/wearsic.db` — favorites & playlists (**back this up!**)
 - `~/wearsic-server/.env` — API key & settings
 - `~/wearsic-server/wearsic-server.log` — logs (auto-rotated at ~2 MB)
+- `~/wearsic-server/wearsic-state/` — staged engine updates (safe to delete when no update is pending)
+
+---
+
+## 6-b. Self-healing engine updates
+
+YouTube changes their site regularly, which can break the extraction engine
+inside the server. The server now heals itself:
+
+1. Every search/extract is counted. After repeated failures the server probes
+   a **canary video** (a video that is effectively permanent on YouTube).
+2. If the canary also fails, the engine is declared broken. The server
+   downloads the newest `wearsic-server-termux-*.zip` from this project's
+   GitHub Releases, **verifies it** (a truncated or corrupt download is
+   discarded), and stages it.
+3. The server exits; the supervisor applies the update and boots the new
+   engine automatically. Your favorites and playlists are untouched (they live
+   in `wearsic.db`), and the previous build is kept as `bin.bak`/`lib.bak`.
+
+Rollback if a new build misbehaves:
+```bash
+cd ~/wearsic-server
+mv bin bin.new && mv lib lib.new
+mv bin.bak bin && mv lib.bak lib
+bash run-termux.sh
+```
+
+Disable auto-updates (update manually instead) by adding this to `.env`:
+```bash
+WEARSIC_AUTO_UPDATE=0
+```
+
+Check engine health any time:
+```bash
+curl -s http://127.0.0.1:8080/health
+```
 
 ---
 
@@ -231,7 +267,7 @@ Where your data lives:
 |---|---|
 | `Missing wearsic-server binary` | You're not inside `~/wearsic-server`; re-extract the zip fully (`bin/` and `lib/` must sit next to `run-termux.sh`) |
 | `Permission denied` on start | `chmod +x run-termux.sh bin/wearsic-server` |
-| Search returns nothing / errors | YouTube changed internals → update extractor: rebuild/update the server from the latest release ZIP (extractor updates ship as new releases) |
+| Search returns nothing / errors | Engine self-healing usually fixes this alone: after repeated failures the server probes a canary video, and if the engine is truly broken it downloads + stages the newest release and applies it on restart (on by default). Manual fix: `bash run-termux.sh` restart after downloading the latest ZIP |
 | `Sign in to confirm you're not a bot` errors | Set a YouTube cookie: see `wearsic-server/README.md` → `WEARSIC_YOUTUBE_COOKIE` env var, or POST it to `/api/config/youtube-cookie` |
 | Server dies when phone sleeps | Run `termux-wake-lock` manually; disable battery optimization for Termux (Android Settings → Apps → Termux → Battery → Unrestricted) |
 | Watch shows "Host not found" | Wrong IP, different WiFi networks, or server not running — redo Section 5-A step 1 |

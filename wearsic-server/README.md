@@ -49,6 +49,8 @@ The ZIP is self-contained: `run-termux.sh` sits next to `bin/` and `lib/` and la
 - `WEARSIC_DB_PATH` — defaults to `wearsic.db`
 - `WEARSIC_API_KEY` — optional. If set, every `/api/*` request must include `X-Wearsic-Key` (constant-time comparison); `/health` remains public. When unset the server is OPEN — fine on a private LAN/Tailscale, never on a public tunnel. A warning is printed at startup when open.
 - `WEARSIC_YOUTUBE_COOKIE` — optional browser cookie string fallback. Required when YouTube returns `Sign in to confirm that you're not a bot` for the server IP. Keep it private and export it only at runtime. The watch app can also push a cookie at runtime (see below). The cookie is never logged and the API never returns it — only `{"hasCookie":true|false}`.
+- `WEARSIC_AUTO_UPDATE` — self-healing engine updates. Defaults to **on**: when extraction starts failing en masse (canary-confirmed engine breakage) or on a slow periodic check, the server fetches a newer `wearsic-server-termux-*.zip` from this project's GitHub Releases, verifies it, stages it, and exits; `run-termux.sh` swaps it in on restart (old build kept as `bin.bak`/`lib.bak` for rollback). Set to `0` to disable and update manually.
+- `WEARSIC_STATE_DIR` — directory for staged updates and `update.json`. Defaults to `wearsic-state/` next to the database.
 
 ## API
 
@@ -67,6 +69,17 @@ Authenticated when `WEARSIC_API_KEY` is set:
 - `GET /api/playlists/{id}`
 - `POST|DELETE /api/playlists/{id}/tracks[/{videoId}]`
 - `GET /api/playlist?url=` — maximum 50 tracks (full albums)
+
+## Self-healing
+
+The server defends itself against the two failure classes that actually kill music servers:
+
+1. **Runtime rot** (expired CDN URLs, one dead video, stalled sockets): ranged proxying, dead-URL re-resolution (403/404/410 → fresh extraction → retry once), iOS→default InnerTube client fallback, per-request timeouts, and the supervisor's crash/hang restart loop.
+2. **Engine rot** (YouTube changes their site and breaks NewPipeExtractor): every extraction is counted. After 6 consecutive failures the server probes a canary video ("Me at the zoo" — effectively permanent). If the canary also fails, the engine is declared broken:
+   - with `WEARSIC_AUTO_UPDATE` on (default): the newest newer GitHub release ZIP is downloaded, integrity-verified (central-directory walk; truncated downloads are rejected), zip-slip-checked, staged into `wearsic-state/staging/`, and the process exits so `run-termux.sh` applies it atomically on restart (previous build kept as `.bak`).
+   - with it off: a loud log line tells you exactly what to do instead.
+
+Check engine status any time: `curl http://localhost:8080/health | jq .extraction,.canaryHealthy,.update`
 - `GET /api/search/albums?q=` — album/playlist search (maximum 10 results;
   album `id` is a full playlist URL, feed it to `/api/playlist?url=`)
 - `GET /api/config/youtube-cookie` — returns `{"hasCookie": true|false}`

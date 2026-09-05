@@ -43,6 +43,8 @@ class YoutubeGateway(
      * without any network access.
      */
     downloader: Downloader = NewPipeDownloader(NewPipeDownloader.buildClient()),
+    /** Self-healing: records extraction success/failure when non-null. */
+    private val healthMeter: ExtractionHealthMeter? = null,
 ) : YoutubeMetadataClient {
 
     private val logger = LoggerFactory.getLogger(YoutubeGateway::class.java)
@@ -93,6 +95,9 @@ class YoutubeGateway(
         const val RELATED_TTL_MS = 30 * 60 * 1000L
         const val ALBUMS_TTL_MS = 30 * 60 * 1000L
         const val PLAYLIST_TTL_MS = 10 * 60 * 1000L
+
+        /** Effectively-permanent video used by the canary probe. */
+        internal const val CANARY_URL = "https://www.youtube.com/watch?v=jNQXAC9IVRw"
     }
 
     // ---------------- Caches ----------------
@@ -155,7 +160,13 @@ class YoutubeGateway(
 
     private fun searchPage(query: String, contentFilters: List<String>): List<TrackDto> {
         val extractor = ServiceList.YouTube.getSearchExtractor(query, contentFilters, "")
-        extractor.fetchPage()
+        try {
+            extractor.fetchPage()
+            healthMeter?.recordSuccess()
+        } catch (e: Exception) {
+            healthMeter?.recordFailure("search: ${e.message}")
+            throw e
+        }
         return extractor.initialPage.items
             .filterIsInstance<StreamInfoItem>()
             .mapNotNull { it.toTrackDtoOrNull() }
@@ -186,7 +197,10 @@ class YoutubeGateway(
             ServiceList.YouTube.suggestionExtractor
                 .suggestionList(key)
                 .take(MAX_SUGGESTIONS)
-        }.getOrDefault(emptyList())
+        }
+            .onSuccess { healthMeter?.recordSuccess() }
+            .onFailure { healthMeter?.recordFailure("suggestions: ${it.message}") }
+            .getOrDefault(emptyList())
         if (result.isNotEmpty()) suggestionsCache.put(key, Timed(result, now + SUGGESTIONS_TTL_MS))
         result
     }
@@ -206,7 +220,10 @@ class YoutubeGateway(
                 .mapNotNull { it.toTrackDtoOrNull() }
                 .distinctBy { it.videoId }
                 .take(MAX_RESULTS)
-        }.getOrDefault(emptyList())
+        }
+            .onSuccess { healthMeter?.recordSuccess() }
+            .onFailure { healthMeter?.recordFailure("related: ${it.message}") }
+            .getOrDefault(emptyList())
         if (result.isNotEmpty()) relatedCache.put(videoId, Timed(result, now + RELATED_TTL_MS))
         result
     }
@@ -233,7 +250,10 @@ class YoutubeGateway(
                     )
                 }
                 .take(MAX_RESULTS)
-        }.getOrDefault(emptyList())
+        }
+            .onSuccess { healthMeter?.recordSuccess() }
+            .onFailure { healthMeter?.recordFailure("albums: ${it.message}") }
+            .getOrDefault(emptyList())
         if (result.isNotEmpty()) albumsCache.put(key, Timed(result, now + ALBUMS_TTL_MS))
         result
     }
@@ -252,7 +272,10 @@ class YoutubeGateway(
                 .distinctBy { it.videoId }
                 .take(MAX_PLAYLIST_TRACKS)
             PlaylistTracksResponse(id = url, name = extractor.name ?: "Playlist", tracks = tracks)
-        }.getOrNull()
+        }
+            .onSuccess { healthMeter?.recordSuccess() }
+            .onFailure { healthMeter?.recordFailure("playlist: ${it.message}") }
+            .getOrNull()
         if (result != null) playlistCache.put(url, Timed(result, now + PLAYLIST_TTL_MS))
         result
     }
@@ -286,6 +309,7 @@ class YoutubeGateway(
 
             when {
                 audio != null -> {
+                    healthMeter?.recordSuccess()
                     val target = StreamTarget(
                         url = audio.content,
                         mimeType = audio.format?.mimeType ?: "audio/webm",
@@ -293,10 +317,17 @@ class YoutubeGateway(
                     streamCache.put(videoId, CachedStreamTarget(target, System.currentTimeMillis() + STREAM_CACHE_TTL_MILLIS))
                     target
                 }
-                timedOut -> null // transient: leave cache empty so next tap retries
+                timedOut -> {
+                    // Transient (queue jam / slow YouTube): leave the cache
+                    // empty so the next tap retries — but count it, because a
+                    // jammed extraction queue is also an engine-health signal.
+                    healthMeter?.recordFailure("stream: extraction timeout")
+                    null
+                }
                 // Genuine empty inside budget (e.g. removed video): cache a
                 // NOT_PLAYABLE marker briefly so repeat misses don't hammer it.
                 else -> {
+                    healthMeter?.recordFailure("stream: no playable audio")
                     streamCache.put(
                         videoId,
                         CachedStreamTarget(
@@ -320,6 +351,25 @@ class YoutubeGateway(
         streamCache.remove(videoId)
         logger.info("Invalidated stale stream target for {} — re-resolving", videoId)
         return streamTarget(videoId)
+    }
+
+    /**
+     * Canary probe: extract the "Me at the zoo" video (jNQXAC9IVRw — the
+     * first YouTube upload, effectively permanent). Deliberately does NOT
+     * touch the health meter (the watchdog decides what failures mean) and
+     * does not take the extraction mutex — the static-client race it could
+     * lose is irrelevant for a health probe, and the mutex may be jammed by
+     * exactly the sickness this probe is diagnosing.
+     */
+    suspend fun canaryProbe(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val extractor = ServiceList.YouTube.getStreamExtractor(CANARY_URL)
+            extractor.fetchPage()
+            extractor.audioStreams.orEmpty().any { it.isUrl }
+        } catch (e: Exception) {
+            logger.warn("Canary probe failed: {}", e.message)
+            false
+        }
     }
 
     /**
