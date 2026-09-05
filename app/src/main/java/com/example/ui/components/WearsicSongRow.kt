@@ -1,8 +1,12 @@
 package com.example.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,13 +22,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,6 +49,7 @@ import com.example.ui.theme.WearsicGlassFill
 import com.example.ui.theme.WearsicLavenderContainer
 import com.example.ui.theme.WearsicSurface
 import com.example.ui.theme.WearsicSurfaceBorder
+import com.example.ui.theme.WearsicSurfaceBorderSubtle
 import com.example.ui.theme.WearsicTextMuted
 import com.example.ui.theme.WearsicTextPrimary
 import com.example.ui.theme.WearsicTextPrimaryDark
@@ -56,6 +66,9 @@ import com.example.ui.theme.WearsicVibrantLavender
  * Secondary actions (queue, download, playlist…) live in the long-press
  * action sheet; rows keep at most one or two inline actions so the title
  * keeps the width.
+ *
+ * Touch feedback: the whole card subtly scales down while pressed (90ms tween)
+ * so every row in the app feels alive without continuous animation cost.
  */
 @Composable
 fun WearsicSongRow(
@@ -70,13 +83,25 @@ fun WearsicSongRow(
     titleMaxLines: Int = 2,
     trailing: @Composable () -> Unit = {},
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.975f else 1f,
+        animationSpec = tween(durationMillis = 90),
+        label = "songRowPress"
+    )
+
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
             .clip(CircleShape)
             .background(WearsicGlassFill)
             .border(1.dp, WearsicGlassBorder, CircleShape)
-            .clickable(onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp)
             .testTag(testTag)
     ) {
@@ -117,7 +142,7 @@ fun WearsicSongRow(
     }
 }
 
-/** 40dp circular artwork with the lavender music-note placeholder. */
+/** 40dp circular artwork (or lavender music-note placeholder) with hairline ring. */
 @Composable
 fun WearsicSongRowArtwork(
     artworkUrl: String?,
@@ -126,6 +151,7 @@ fun WearsicSongRowArtwork(
     size: Dp = 40.dp,
 ) {
     val context = LocalContext.current
+    val ring = Modifier.border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
     if (!artworkUrl.isNullOrBlank()) {
         AsyncImage(
             model = ImageRequest.Builder(context)
@@ -137,13 +163,15 @@ fun WearsicSongRowArtwork(
             modifier = modifier
                 .size(size)
                 .clip(CircleShape)
+                .then(ring)
         )
     } else {
         Box(
             modifier = modifier
                 .size(size)
                 .clip(CircleShape)
-                .background(WearsicLavenderContainer),
+                .background(WearsicLavenderContainer)
+                .then(ring),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -159,7 +187,8 @@ fun WearsicSongRowArtwork(
 /**
  * Small circular icon action button for song-row trailing actions.
  * Touchable area is at least 40dp on a watch (rows are tall enough that
- * adjacent targets don't collide); visual size defaults to 28dp.
+ * adjacent targets don't collide); visual size defaults to 28dp. Squishes
+ * + ticks on press.
  */
 @Composable
 fun WearsicSongRowActionButton(
@@ -173,13 +202,29 @@ fun WearsicSongRowActionButton(
     background: Color = WearsicSurface,
     borderColor: Color = WearsicSurfaceBorder,
 ) {
+    val haptic = LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.84f else 1f,
+        animationSpec = tween(durationMillis = 90),
+        label = "songRowActionPress"
+    )
+
     Box(
         modifier = modifier
             .size(visualSize)
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
             .clip(CircleShape)
             .background(background)
             .border(1.dp, borderColor, CircleShape)
-            .clickable(onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onClick()
+            }
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier),
         contentAlignment = Alignment.Center
     ) {
@@ -200,12 +245,28 @@ fun WearsicSongRowPlayButton(
     testTag: String? = null,
     size: Dp = 28.dp,
 ) {
+    val haptic = LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.84f else 1f,
+        animationSpec = tween(durationMillis = 90),
+        label = "songRowPlayPress"
+    )
+
     Box(
         modifier = modifier
             .size(size)
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
             .clip(CircleShape)
             .background(WearsicVibrantLavender)
-            .clickable(onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onClick()
+            }
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier),
         contentAlignment = Alignment.Center
     ) {

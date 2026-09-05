@@ -200,7 +200,16 @@ class OfflinePersistenceTest {
             }
             assertTrue("deleted download must disappear from the repository", gone)
         } finally {
+            // release() cancels the manager scope but does not join it. Let any
+            // in-flight repository write (progress / markCancelled / delete)
+            // land before closing the DB — otherwise a late write can surface
+            // as an uncaught exception in the NEXT test class and flake CI.
             manager.release()
+            try {
+                Thread.sleep(250)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
             db.close()
             context.getDatabasePath("resume_test_db").delete()
         }

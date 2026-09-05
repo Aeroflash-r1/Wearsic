@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Radio
@@ -34,6 +33,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -43,11 +45,14 @@ import androidx.compose.ui.unit.sp
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.itemsIndexed
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
+import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import androidx.wear.tooling.preview.devices.WearDevices
 import androidx.compose.ui.tooling.preview.Preview
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.model.PlaybackUiState
 import com.example.model.Track
 import com.example.ui.components.WearsicScreenHeader
@@ -152,20 +157,16 @@ fun QueueScreen(
                             .clickable(onClick = onStartRadio),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = if (radioState is com.example.ui.viewmodel.RadioState.Loading) {
-                                androidx.compose.material.icons.Icons.Rounded.HourglassEmpty
-                            } else {
-                                androidx.compose.material.icons.Icons.Rounded.Radio
-                            },
-                            contentDescription = "Radio: queue similar songs",
-                            tint = if (radioState is com.example.ui.viewmodel.RadioState.Loading) {
-                                WearsicVibrantLavender
-                            } else {
-                                WearsicTextMuted
-                            },
-                            modifier = Modifier.size(16.dp)
-                        )
+                        if (radioState is com.example.ui.viewmodel.RadioState.Loading) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                        } else {
+                            Icon(
+                                imageVector = Icons.Rounded.Radio,
+                                contentDescription = "Radio: queue similar songs",
+                                tint = WearsicTextMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Box(
@@ -229,7 +230,7 @@ fun QueueScreen(
                             textAlign = TextAlign.Center
                         )
                         Text(
-                            text = "Tap a search result to queue the whole list, or use + on a track.",
+                            text = "Tap a search result to queue that whole list, or use the ⋯ menu on a track to add one song.",
                             color = WearsicTextMuted,
                             fontSize = 10.sp,
                             textAlign = TextAlign.Center,
@@ -321,6 +322,7 @@ private fun QueueCurrentCard(
     isPlaying: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -343,19 +345,33 @@ private fun QueueCurrentCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(WearsicSurface),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.MusicNote,
+                // Real album art (or the music-note chip when there is none).
+                val art = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                if (!track.artworkUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(track.artworkUrl)
+                            .size(160)
+                            .build(),
                         contentDescription = null,
-                        tint = WearsicVibrantLavender,
-                        modifier = Modifier.size(20.dp)
+                        contentScale = ContentScale.Crop,
+                        modifier = art
                     )
+                } else {
+                    Box(
+                        modifier = art.background(Color.White.copy(alpha = 0.14f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.MusicNote,
+                            contentDescription = null,
+                            tint = WearsicTextPrimaryDark,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.width(12.dp))

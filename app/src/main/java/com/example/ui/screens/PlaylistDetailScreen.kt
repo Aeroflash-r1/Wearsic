@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
+import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
@@ -110,12 +110,7 @@ fun PlaylistDetailScreen(
                             .padding(vertical = 12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(
-                            imageVector = Icons.Rounded.HourglassEmpty,
-                            contentDescription = "Loading",
-                            tint = WearsicVibrantLavender,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        CircularProgressIndicator(modifier = Modifier.size(22.dp))
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "Loading tracks...",

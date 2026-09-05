@@ -20,7 +20,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Album
-import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.runtime.Composable
@@ -50,6 +49,7 @@ import coil.request.ImageRequest
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
+import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
@@ -165,12 +165,7 @@ fun AlbumsScreen(
 
             if (albumsState.isLoading) {
                 item {
-                    Icon(
-                        imageVector = Icons.Rounded.HourglassEmpty,
-                        contentDescription = "Loading",
-                        tint = WearsicVibrantLavender,
-                        modifier = Modifier.size(24.dp)
-                    )
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
                 }
             }
 

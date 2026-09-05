@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -73,14 +75,19 @@ fun WearsicPrimaryPillButton(
     val haptic = LocalHapticFeedback.current
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.96f else 1f,
+        animationSpec = tween(durationMillis = 100),
+        label = "primaryPillPress"
+    )
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(52.dp)
             .graphicsLayer {
-                scaleX = if (pressed) 0.97f else 1f
-                scaleY = if (pressed) 0.96f else 1f
+                scaleX = pressScale
+                scaleY = pressScale
             }
             .clip(CircleShape)
             .background(backgroundColor)
@@ -170,13 +177,18 @@ fun WearsicSecondaryPillButton(
     val haptic = LocalHapticFeedback.current
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.96f else 1f,
+        animationSpec = tween(durationMillis = 100),
+        label = "secondaryPillPress"
+    )
 
     Box(
         modifier = modifier
             .height(48.dp)
             .graphicsLayer {
-                scaleX = if (pressed) 0.97f else 1f
-                scaleY = if (pressed) 0.96f else 1f
+                scaleX = pressScale
+                scaleY = pressScale
             }
             .clip(CircleShape)
             .background(WearsicGlassFill)
@@ -228,12 +240,28 @@ fun WearsicSettingsActionPill(
     modifier: Modifier = Modifier,
     testTag: String = "settings_action_pill"
 ) {
+    val haptic = LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.93f else 1f,
+        animationSpec = tween(durationMillis = 100),
+        label = "settingsPillPress"
+    )
+
     Box(
         modifier = modifier
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
             .clip(CircleShape)
             .background(WearsicSurface)
             .border(1.dp, WearsicSurfaceBorder, CircleShape)
-            .clickable(onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onClick()
+            }
             .padding(horizontal = 18.dp, vertical = 9.dp)
             .testTag(testTag),
         contentAlignment = Alignment.Center
@@ -279,10 +307,17 @@ fun WearsicCircularIconButton(
     testTag: String = "circular_icon_button"
 ) {
     val haptic = LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.86f else 1f,
+        animationSpec = tween(durationMillis = 90),
+        label = "circularIconPress"
+    )
     Box(
         modifier = modifier
             .size(if (size < 48.dp) 48.dp else size)
-            .clickable {
+            .clickable(interactionSource = interaction, indication = null) {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 onClick()
             }
@@ -292,6 +327,10 @@ fun WearsicCircularIconButton(
         Box(
             modifier = Modifier
                 .size(size)
+                .graphicsLayer {
+                    scaleX = pressScale
+                    scaleY = pressScale
+                }
                 .clip(CircleShape)
                 .background(backgroundColor)
                 .border(1.dp, borderColor, CircleShape),

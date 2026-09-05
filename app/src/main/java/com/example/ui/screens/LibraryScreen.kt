@@ -1,8 +1,12 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,10 +32,13 @@ import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
@@ -216,6 +223,7 @@ fun LibraryScreen(
                 NowPlayingMiniCard(
                     title = playbackState.currentTrack.title.ifBlank { "No Active Track" },
                     artist = playbackState.currentTrack.artist.ifBlank { "Wearsic Player" },
+                    artworkUrl = playbackState.currentTrack.artworkUrl,
                     isPlaying = playbackState.isPlaying,
                     onClick = onNavigateToPlayer
                 )
@@ -243,6 +251,7 @@ fun LibraryScreen(
 private fun NowPlayingMiniCard(
     title: String,
     artist: String,
+    artworkUrl: String?,
     isPlaying: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -250,9 +259,21 @@ private fun NowPlayingMiniCard(
     val heroBrush = Brush.linearGradient(
         listOf(WearsicVibrantLavender, Color(0xFF8A5CF6))
     )
+    val context = LocalContext.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = tween(durationMillis = 90),
+        label = "nowPlayingPress"
+    )
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
             .clip(CircleShape)
             .background(if (isPlaying) heroBrush else SolidColor(WearsicGlassFill))
             .border(
@@ -260,7 +281,7 @@ private fun NowPlayingMiniCard(
                 if (isPlaying) Color.Transparent else WearsicSurfaceBorderSubtle,
                 CircleShape
             )
-            .clickable(onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 9.dp)
             .testTag("now_playing_shortcut")
     ) {
@@ -273,21 +294,38 @@ private fun NowPlayingMiniCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .background(
+                // Real album art (or the music-note chip when there is none).
+                val artModifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .then(
+                        if (isPlaying) Modifier.border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape)
+                        else Modifier.border(1.dp, WearsicSurfaceBorderSubtle, CircleShape)
+                    )
+                if (!artworkUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(artworkUrl)
+                            .size(96)
+                            .build(),
+                        contentDescription = "Now Playing",
+                        contentScale = ContentScale.Crop,
+                        modifier = artModifier
+                    )
+                } else {
+                    Box(
+                        modifier = artModifier.background(
                             if (isPlaying) Color.Black.copy(alpha = 0.25f) else WearsicLavenderContainer
                         ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.MusicNote,
-                        contentDescription = "Now Playing",
-                        tint = if (isPlaying) WearsicTextPrimaryDark else WearsicVibrantLavender,
-                        modifier = Modifier.size(16.dp)
-                    )
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.MusicNote,
+                            contentDescription = null,
+                            tint = if (isPlaying) WearsicTextPrimaryDark else WearsicVibrantLavender,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.width(10.dp))
                 Column {

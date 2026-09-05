@@ -60,7 +60,7 @@ This client is fully hardened to support any standard Ktor/OkHttp endpoint follo
 ```json
 {
   "status": "ok",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "serverName": "Wearsic Engine",
   "transcoderAvailable": true
 }
@@ -175,5 +175,5 @@ keytool -genkeypair -v -keystore my-upload-key.jks -alias upload \
 Then cut a release:
 
 ```bash
-git tag v1.5.1 && git push origin v1.5.1
+git tag v1.6.0 && git push origin v1.6.0
 ```

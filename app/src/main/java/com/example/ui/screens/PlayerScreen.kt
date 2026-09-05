@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -40,7 +43,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -624,7 +629,9 @@ private fun SecondaryActionsRow(
             iconTint = if (isFavorite) WearsicVibrantLavender else WearsicTextMuted,
             backgroundTint = if (isFavorite) WearsicLavenderSubtle else Color.Unspecified,
             borderColor = if (isFavorite) WearsicVibrantLavender else WearsicGlassBorder,
-            testTag = "player_favorite_button"
+            testTag = "player_favorite_button",
+            // One-shot pop when the heart flips to favorited.
+            bounceOnTrue = isFavorite
         )
 
         Spacer(modifier = Modifier.width(12.dp))
@@ -648,20 +655,43 @@ private fun ActionCircle(
     modifier: Modifier = Modifier,
     backgroundTint: Color = Color.Unspecified,
     borderColor: Color = WearsicGlassBorder,
-    testTag: String = "player_action"
+    testTag: String = "player_action",
+    bounceOnTrue: Boolean = false
 ) {
     val haptic = LocalHapticFeedback.current
 
-    // 48dp guaranteed touch area; visual circle stays 36dp, with press scale.
+    // Press squish: animated so the 48dp touch target stays put while the
+    // 36dp visual circle responds to the finger.
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.88f else 1f,
+        animationSpec = tween(durationMillis = 90),
+        label = "actionCirclePress"
+    )
+
+    // One-shot pop (used by the heart): fires only on the false -> true edge,
+    // then settles with a bouncy spring. Discrete 300ms, zero idle cost.
+    val bounce = remember { Animatable(1f) }
+    var lastBounceKey by remember { mutableStateOf(bounceOnTrue) }
+    LaunchedEffect(bounceOnTrue) {
+        if (bounceOnTrue && !lastBounceKey) {
+            bounce.snapTo(1f)
+            bounce.animateTo(1.35f, tween(durationMillis = 90))
+            bounce.animateTo(
+                1f,
+                spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium
+                )
+            )
+        }
+        lastBounceKey = bounceOnTrue
+    }
+
     Box(
         modifier = modifier
             .size(48.dp)
-            .graphicsLayer {
-                scaleX = if (pressed) 0.9f else 1f
-                scaleY = if (pressed) 0.9f else 1f
-            }
             .clickable(interactionSource = interaction, indication = null) {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 onClick()
@@ -672,6 +702,11 @@ private fun ActionCircle(
         Box(
             modifier = Modifier
                 .size(36.dp)
+                .graphicsLayer {
+                    val pulse = if (bounceOnTrue) bounce.value else 1f
+                    scaleX = pressScale * pulse
+                    scaleY = pressScale * pulse
+                }
                 .clip(CircleShape)
                 .background(if (backgroundTint == Color.Unspecified) WearsicGlassFill else backgroundTint)
                 .background(
