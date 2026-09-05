@@ -81,8 +81,8 @@ object WearsicPlaybackCacheManager {
         // and causes controller timeouts ("Unexpected IllegalStateException").
         val upstreamFactory = OkHttpDataSource.Factory(
             com.example.network.WearsicHttp.client.newBuilder()
-                .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
                 .build()
         )
         // No forced "Range: bytes=0-" header here: ExoPlayer issues its own

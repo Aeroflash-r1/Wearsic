@@ -4,66 +4,55 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlin.test.assertFalse
 
 class OrchestratorFallbackTest {
 
     private class FakeMetadataSource : MetadataSource {
-        var tracks: List<ITunesTrack> = emptyList()
+        var tracks: List<YtmTrack> = emptyList()
         val searchCalls: MutableList<String> = mutableListOf()
 
-        override suspend fun searchSongs(query: String, limit: Int): List<ITunesTrack> {
+        override suspend fun searchSongs(query: String, limit: Int): List<YtmTrack> {
             searchCalls.add(query)
             return tracks
         }
 
-        override suspend fun lookupTrack(trackId: Long): ITunesTrack? =
-            tracks.firstOrNull { it.trackId == trackId }
-
-        override fun toTrackDto(track: ITunesTrack): TrackDto = TrackDto(
-            videoId = track.surrogateId,
-            title = track.trackName ?: "Unknown",
-            uploader = track.artistName ?: "Unknown",
-            durationMs = track.trackTimeMillis ?: 0L,
-            thumbnailUrl = null,
+        override fun toTrackDto(track: YtmTrack): TrackDto = TrackDto(
+            videoId = track.videoId,
+            title = track.title ?: "Unknown",
+            uploader = track.artist ?: "Unknown",
+            durationMs = track.durationMs ?: 0L,
+            thumbnailUrl = track.thumbnailUrl,
         )
     }
 
-    private fun track(id: Long, name: String = "Song $id") = ITunesTrack(
-        trackId = id,
-        trackName = name,
-        artistName = "Artist $id",
-        trackTimeMillis = 200_000L,
-        artworkUrl100 = null,
+    private fun track(id: String, name: String = "Song $id") = YtmTrack(
+        videoId = id,
+        title = name,
+        artist = "Artist $id",
+        durationMs = 200_000L,
     )
 
     @Test
-    fun `iTunes results are returned directly - YouTube fallback NOT called`() = runTest {
-        val metadata = FakeMetadataSource().apply { tracks = listOf(track(1), track(2)) }
+    fun `YTM results are returned directly - YouTube fallback NOT called`() = runTest {
+        val metadata = FakeMetadataSource().apply { tracks = listOf(track("vid1"), track("vid2")) }
         val youtube = FakeYoutubeMetadataClient()
-        val orchestrator = MetadataSearchOrchestrator(metadata, youtube, TrackMatcher(youtube))
+        val orchestrator = MetadataSearchOrchestrator(metadata, youtube)
 
         val results = orchestrator.search("crowded house")
 
         assertEquals(2, results.size)
-        assertEquals("it:1", results[0].videoId, "results must carry surrogate ids")
-        assertEquals(0, orchestrator.youtubeFallbackCount, "usable iTunes results must not count as YouTube fallbacks")
-        // The only YouTube traffic for this search is the BACKGROUND prefetch
-        // (top-6 match + stream warm), which never blocks the response.
-        val prefetchSearches = youtube.searchCalls.toList()
-        assertTrue(
-            prefetchSearches.all { it.startsWith("Artist ") },
-            "only prefetch-style artist-title searches expected, got: $prefetchSearches",
-        )
+        assertEquals("vid1", results[0].videoId, "results must carry real videoIds")
+        assertEquals(0, orchestrator.youtubeFallbackCount, "usable YTM results must not count as YouTube fallbacks")
+        assertEquals(listOf("crowded house"), metadata.searchCalls)
     }
 
     @Test
-    fun `empty iTunes results fall back to YouTube search`() = runTest {
+    fun `empty YTM results fall back to YouTube search`() = runTest {
         val metadata = FakeMetadataSource().apply { tracks = emptyList() }
         val youtube = FakeYoutubeMetadataClient().apply {
             results = listOf(TrackDto(videoId = "yt1", title = "YT Song", uploader = "Chan"))
         }
-        val orchestrator = MetadataSearchOrchestrator(metadata, youtube, TrackMatcher(youtube))
+        val orchestrator = MetadataSearchOrchestrator(metadata, youtube)
 
         val results = orchestrator.search("obscure song")
 
@@ -74,152 +63,77 @@ class OrchestratorFallbackTest {
     }
 
     /**
-     * Verified behavior: the real ITunesService filters unusable entries
-     * (null trackName/artistName) BEFORE returning, so entries that are only
-     * partially populated never reach the orchestrator. The orchestrator's
-     * contract is: ANY non-empty list = usable. This test pins that the
-     * filtering responsibility lives in ITunesService (covered by its own
-     * contract) and that the orchestrator treats non-empty as usable.
+     * The real YTMusicService filters unusable entries (null title/artist)
+     * BEFORE returning, so partially populated entries never reach the
+     * orchestrator. Any non-empty list = usable.
      */
     @Test
-    fun `non-empty iTunes response is treated as usable regardless of entry quality`() = runTest {
+    fun `non-empty YTM response is treated as usable regardless of entry quality`() = runTest {
         val metadata = FakeMetadataSource().apply {
             tracks = listOf(
-                ITunesTrack(trackId = 1, trackName = null, artistName = "Artist", trackTimeMillis = 1),
-                ITunesTrack(trackId = 2, trackName = "Name", artistName = null, trackTimeMillis = 1),
+                YtmTrack(videoId = "a", title = null, artist = "Artist"),
+                YtmTrack(videoId = "b", title = "Name", artist = null),
             )
         }
         val youtube = FakeYoutubeMetadataClient().apply {
             results = listOf(TrackDto(videoId = "yt9", title = "t", uploader = "u"))
         }
-        val orchestrator = MetadataSearchOrchestrator(metadata, youtube, TrackMatcher(youtube))
+        val orchestrator = MetadataSearchOrchestrator(metadata, youtube)
 
         val results = orchestrator.search("broken metadata")
 
-        assertEquals(2, results.size, "non-empty iTunes list must be returned as-is (no fallback)")
+        assertEquals(2, results.size, "non-empty YTM list must be returned as-is (no fallback)")
         assertEquals(0, orchestrator.youtubeFallbackCount)
-    }
-
-    @Test
-    fun `background prefetch resolves streams for top results`() = runTest {
-        val metadata = FakeMetadataSource().apply { tracks = listOf(track(1), track(2)) }
-        val youtube = FakeYoutubeMetadataClient().apply {
-            streamTargets["yt-match-1"] = StreamTarget("https://cdn/x.m4a", "audio/mp4")
-        }
-        val matcher = TrackMatcher(youtube)
-        val orchestrator = MetadataSearchOrchestrator(metadata, youtube, matcher)
-
-        orchestrator.search("crowded house")
-
-        // Prefetch runs on a real Dispatchers.IO scope outside runTest's
-        // virtual clock — yield to the main-test dispatcher and poll with real
-        // (wall-clock) sleeps until the background job lands.
-        val deadline = System.currentTimeMillis() + 5_000
-        var matched = false
-        while (System.currentTimeMillis() < deadline) {
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                kotlinx.coroutines.delay(50)
-            }
-            if (youtube.searchCalls.any { it.contains("Artist 1 - Song 1") }) {
-                matched = true
-                break
-            }
-        }
-        assertTrue(
-            matched,
-            "prefetch must match the top iTunes result via a YouTube search (calls=$youtube.searchCalls)",
-        )
-    }
-
-    @Test
-    fun `surrogate id is resolved via iTunes lookup after restart`() = runTest {
-        val metadata = FakeMetadataSource().apply { tracks = listOf(track(77)) }
-        val youtube = FakeYoutubeMetadataClient().apply {
-            results = listOf(
-                TrackDto(videoId = "realVideo", title = "Song 77", uploader = "Artist 77", durationMs = 200_000),
-            )
-        }
-        val orchestrator = MetadataSearchOrchestrator(metadata, youtube, TrackMatcher(youtube))
-
-        // Simulates a fresh server receiving a saved "it:77" from the watch.
-        val resolved = orchestrator.resolveStreamVideoId("it:77")
-
-        assertEquals("realVideo", resolved)
-        assertTrue(metadata.searchCalls.isEmpty(), "lookup path must use iTunes /lookup, not search")
     }
 
     @Test
     fun `real YouTube ids pass through unchanged`() = runTest {
         val metadata = FakeMetadataSource()
         val youtube = FakeYoutubeMetadataClient()
-        val orchestrator = MetadataSearchOrchestrator(metadata, youtube, TrackMatcher(youtube))
+        val orchestrator = MetadataSearchOrchestrator(metadata, youtube)
 
         assertEquals("dQw4w9WgXcQ", orchestrator.resolveStreamVideoId("dQw4w9WgXcQ"))
+        assertEquals("NZ3Ck43m_ZY", orchestrator.resolveStreamVideoId("NZ3Ck43m_ZY"))
         assertEquals(0, orchestrator.youtubeFallbackCount)
     }
 
     @Test
-    fun `unknown surrogate id resolves to null`() = runTest {
+    fun `unknown legacy surrogate id resolves to null`() = runTest {
         val metadata = FakeMetadataSource()
         val youtube = FakeYoutubeMetadataClient()
-        val orchestrator = MetadataSearchOrchestrator(metadata, youtube, TrackMatcher(youtube))
+        val orchestrator = MetadataSearchOrchestrator(metadata, youtube)
 
         assertEquals(null, orchestrator.resolveStreamVideoId("it:999999"))
     }
 
-    // ---------------- Persistent match store (restart fast-replay) ----------------
+    // ---------------- Legacy match store (pre-1.5 `it:` ids) ----------------
 
     private class InMemoryMatchStore : MetadataSearchOrchestrator.MatchPersistence {
         val map = mutableMapOf<String, String>()
         override fun getMatchedVideoId(surrogateId: String): String? = map[surrogateId]
-        override fun putMatchedVideoId(surrogateId: String, videoId: String) {
-            map[surrogateId] = videoId
-        }
     }
 
     @Test
-    fun `persisted match survives a restart without hitting YouTube again`() = runTest {
-        val metadata = FakeMetadataSource().apply { tracks = listOf(track(77)) }
-        val youtube = FakeYoutubeMetadataClient().apply {
-            results = listOf(
-                TrackDto(videoId = "realVideo", title = "Song 77", uploader = "Artist 77", durationMs = 200_000),
-            )
-        }
-        val store = InMemoryMatchStore()
+    fun `legacy persisted match resolves without hitting YouTube`() = runTest {
+        val metadata = FakeMetadataSource()
+        val youtube = FakeYoutubeMetadataClient()
+        val store = InMemoryMatchStore().apply { map["it:77"] = "realVideo" }
+        val orchestrator = MetadataSearchOrchestrator(metadata, youtube, persistentMatches = store)
 
-        // "Before restart": resolve pays the YouTube match once and persists it.
-        val before = MetadataSearchOrchestrator(metadata, youtube, TrackMatcher(youtube), store)
-        assertEquals("realVideo", before.resolveStreamVideoId("it:77"))
-        assertEquals("realVideo", store.map["it:77"])
-
-        // "After restart": fresh orchestrator (empty in-memory caches) but the
-        // same persistent store. Saved-song replay must not touch YouTube.
-        val youtubeAfterRestart = FakeYoutubeMetadataClient()
-        val after = MetadataSearchOrchestrator(metadata, youtubeAfterRestart, TrackMatcher(youtubeAfterRestart), store)
-        assertEquals("realVideo", after.resolveStreamVideoId("it:77"))
-        assertTrue(
-            youtubeAfterRestart.searchCalls.isEmpty(),
-            "restart replay must be served from the persisted match, got searches: ${youtubeAfterRestart.searchCalls}",
-        )
+        assertEquals("realVideo", orchestrator.resolveStreamVideoId("it:77"))
+        assertTrue(youtube.searchCalls.isEmpty(), "legacy replay must not touch YouTube")
     }
 
     @Test
-    fun `persistence failure never breaks matching`() = runTest {
-        val metadata = FakeMetadataSource().apply { tracks = listOf(track(77)) }
-        val youtube = FakeYoutubeMetadataClient().apply {
-            results = listOf(
-                TrackDto(videoId = "realVideo", title = "Song 77", uploader = "Artist 77", durationMs = 200_000),
-            )
-        }
+    fun `persistence failure degrades to null, never throws`() = runTest {
+        val metadata = FakeMetadataSource()
+        val youtube = FakeYoutubeMetadataClient()
         val broken = object : MetadataSearchOrchestrator.MatchPersistence {
             override fun getMatchedVideoId(surrogateId: String): String? =
                 throw IllegalStateException("db gone")
-            override fun putMatchedVideoId(surrogateId: String, videoId: String) {
-                throw IllegalStateException("db gone")
-            }
         }
 
-        val orchestrator = MetadataSearchOrchestrator(metadata, youtube, TrackMatcher(youtube), broken)
-        assertEquals("realVideo", orchestrator.resolveStreamVideoId("it:77"), "matching must proceed without persistence")
+        val orchestrator = MetadataSearchOrchestrator(metadata, youtube, persistentMatches = broken)
+        assertEquals(null, orchestrator.resolveStreamVideoId("it:77"), "broken store must degrade to null")
     }
 }

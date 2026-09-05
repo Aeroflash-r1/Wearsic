@@ -58,7 +58,7 @@ Public:
 
 Authenticated when `WEARSIC_API_KEY` is set:
 
-- `GET /api/search?q=` — maximum 10 results
+- `GET /api/search?q=` — maximum 10 results (YouTube Music songs with real videoIds)
 - `GET /api/suggestions?q=` — maximum 5 suggestions
 - `GET /api/related/{videoId}` — maximum 10 results
 - `GET /api/stream/{videoId}` — proxied audio with Range forwarding; prefers M4A/AAC near 128 kbps
@@ -72,7 +72,7 @@ Authenticated when `WEARSIC_API_KEY` is set:
 - `GET /api/config/youtube-cookie` — returns `{"hasCookie": true|false}`
 - `POST /api/config/youtube-cookie` — body `{"cookie": "SID=...; HSID=..."}`; saves the cookie in SQLite and applies it to every YouTube request immediately. Send `{"cookie":""}` to clear it.
 
-The server caches search results and resolved stream targets in small bounded in-memory caches (stream targets expire after 1 hour — CDN URLs expire upstream). Surrogate → YouTube video matches are additionally persisted in SQLite (bounded to 2000 rows, 30-day staleness), so favorites and playlists replay instantly after a server restart instead of re-running the YouTube match. SQLite uses WAL mode with `synchronous=NORMAL` for good performance on a phone.
+The server caches search results and resolved stream targets in small bounded in-memory caches (stream targets expire after 1 hour — CDN URLs expire upstream). Search goes to YouTube Music first (official titles/artists with directly playable videoIds); when YTM is unreachable the NewPipeExtractor YouTube search is used as fallback. Legacy surrogate → YouTube video matches from pre-1.5 builds are additionally persisted in SQLite (bounded to 2000 rows, 30-day staleness), so old saved favorites keep replaying after upgrade. SQLite uses WAL mode with `synchronous=NORMAL` for good performance on a phone.
 
 ## Errors and rate limiting
 

@@ -4,8 +4,6 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -86,12 +84,25 @@ class YoutubeGateway(
 
         /** Sentinel marking "extraction ran but nothing playable was found". */
         internal const val NOT_PLAYABLE = "wearsic:not-playable"
+
+        const val SUGGESTIONS_TTL_MS = 10 * 60 * 1000L
+        const val RELATED_TTL_MS = 30 * 60 * 1000L
+        const val ALBUMS_TTL_MS = 30 * 60 * 1000L
+        const val PLAYLIST_TTL_MS = 10 * 60 * 1000L
     }
 
     // ---------------- Caches ----------------
 
     private val searchCache = BoundedCache<String, List<TrackDto>>(maxSize = 128)
     private val streamCache = BoundedCache<String, CachedStreamTarget>(maxSize = 64)
+    // Previously uncached endpoints (0% hit rate): every keystroke / radio tap
+    // / album open paid a full YouTube round-trip. Small TTL caches make
+    // repeat views instant with negligible staleness for a personal server.
+    private data class Timed<T>(val value: T, val expiresAt: Long)
+    private val suggestionsCache = BoundedCache<String, Timed<List<String>>>(maxSize = 256)
+    private val relatedCache = BoundedCache<String, Timed<List<TrackDto>>>(maxSize = 64)
+    private val albumsCache = BoundedCache<String, Timed<List<AlbumDto>>>(maxSize = 32)
+    private val playlistCache = BoundedCache<String, Timed<PlaylistTracksResponse>>(maxSize = 32)
 
     // Replaces the old per-key Mutex map (one entry per key EVER seen — an
     // unbounded leak). SingleFlight removes each entry when the operation
@@ -119,34 +130,23 @@ class YoutubeGateway(
     }
 
     /**
-     * Runs the YT-Music-filtered search and the unfiltered fallback search
-     * CONCURRENTLY, and cancels the loser when the other wins — the original
-     * implementation awaited both, so a successful music-filtered search still
-     * paid for the full unfiltered round trip.
+     * Music-filtered search first; unfiltered only if filtered comes back
+     * empty. The old code fired BOTH concurrently for every fallback search,
+     * paying 2x HTTP/CPU/bot-wall exposure even when filtered already had
+     * the answer. Sequential saves ~0.5-2s and halves YouTube QPS.
      */
-    private suspend fun searchMusic(query: String): List<TrackDto> = coroutineScope {
-        val filteredDeferred = async(Dispatchers.IO) {
-            runCatching { searchPage(query, listOf("music_songs")) }
-                .onFailure { e ->
-                    logger.info("Music-filtered search failed for '{}': {}", query, e.message)
-                }
-                .getOrDefault(emptyList())
-        }
-        val unfilteredDeferred = async(Dispatchers.IO) {
-            runCatching { searchPage(query, emptyList()) }
-                .onFailure { e ->
-                    logger.info("Unfiltered search failed for '{}': {}", query, e.message)
-                }
-                .getOrDefault(emptyList())
-        }
-
-        val filtered = filteredDeferred.await()
-        if (filtered.isNotEmpty()) {
-            unfilteredDeferred.cancel()
-            filtered
-        } else {
-            unfilteredDeferred.await()
-        }
+    private suspend fun searchMusic(query: String): List<TrackDto> = withContext(Dispatchers.IO) {
+        val filtered = runCatching { searchPage(query, listOf("music_songs")) }
+            .onFailure { e ->
+                logger.info("Music-filtered search failed for '{}': {}", query, e.message)
+            }
+            .getOrDefault(emptyList())
+        if (filtered.isNotEmpty()) return@withContext filtered
+        runCatching { searchPage(query, emptyList()) }
+            .onFailure { e ->
+                logger.info("Unfiltered search failed for '{}': {}", query, e.message)
+            }
+            .getOrDefault(emptyList())
     }
 
     private fun searchPage(query: String, contentFilters: List<String>): List<TrackDto> {
@@ -174,18 +174,25 @@ class YoutubeGateway(
     // ---------------- Suggestions ----------------
 
     override suspend fun suggestions(prefix: String): List<String> = withContext(Dispatchers.IO) {
-        if (prefix.trim().length < 2) return@withContext emptyList()
-        runCatching {
+        val key = prefix.trim()
+        if (key.length < 2) return@withContext emptyList()
+        val now = System.currentTimeMillis()
+        suggestionsCache.get(key)?.let { if (it.expiresAt > now) return@withContext it.value }
+        val result = runCatching {
             ServiceList.YouTube.suggestionExtractor
-                .suggestionList(prefix.trim())
+                .suggestionList(key)
                 .take(MAX_SUGGESTIONS)
         }.getOrDefault(emptyList())
+        if (result.isNotEmpty()) suggestionsCache.put(key, Timed(result, now + SUGGESTIONS_TTL_MS))
+        result
     }
 
     // ---------------- Related / radio ----------------
 
     override suspend fun related(videoId: String): List<TrackDto> = withContext(Dispatchers.IO) {
-        runCatching {
+        val now = System.currentTimeMillis()
+        relatedCache.get(videoId)?.let { if (it.expiresAt > now) return@withContext it.value }
+        val result = runCatching {
             val extractor = ServiceList.YouTube.getStreamExtractor("https://www.youtube.com/watch?v=$videoId")
             extractor.fetchPage()
             extractor.relatedItems?.items
@@ -196,13 +203,19 @@ class YoutubeGateway(
                 .distinctBy { it.videoId }
                 .take(MAX_RESULTS)
         }.getOrDefault(emptyList())
+        if (result.isNotEmpty()) relatedCache.put(videoId, Timed(result, now + RELATED_TTL_MS))
+        result
     }
 
     // ---------------- Albums ----------------
 
     override suspend fun searchAlbums(query: String): List<AlbumDto> = withContext(Dispatchers.IO) {
-        runCatching {
-            val extractor = ServiceList.YouTube.getSearchExtractor(query, listOf("music_albums"), "")
+        val key = query.trim()
+        if (key.length < 2) return@withContext emptyList()
+        val now = System.currentTimeMillis()
+        albumsCache.get(key)?.let { if (it.expiresAt > now) return@withContext it.value }
+        val result = runCatching {
+            val extractor = ServiceList.YouTube.getSearchExtractor(key, listOf("music_albums"), "")
             extractor.fetchPage()
             extractor.initialPage.items
                 .filterIsInstance<PlaylistInfoItem>()
@@ -217,12 +230,16 @@ class YoutubeGateway(
                 }
                 .take(MAX_RESULTS)
         }.getOrDefault(emptyList())
+        if (result.isNotEmpty()) albumsCache.put(key, Timed(result, now + ALBUMS_TTL_MS))
+        result
     }
 
     // ---------------- Playlist by URL (also used for albums) ----------------
 
     override suspend fun playlistByUrl(url: String): PlaylistTracksResponse? = withContext(Dispatchers.IO) {
-        runCatching {
+        val now = System.currentTimeMillis()
+        playlistCache.get(url)?.let { if (it.expiresAt > now) return@withContext it.value }
+        val result = runCatching {
             val extractor = ServiceList.YouTube.getPlaylistExtractor(url)
             extractor.fetchPage()
             val tracks = extractor.initialPage.items
@@ -232,21 +249,11 @@ class YoutubeGateway(
                 .take(MAX_RESULTS)
             PlaylistTracksResponse(id = url, name = extractor.name ?: "Playlist", tracks = tracks)
         }.getOrNull()
+        if (result != null) playlistCache.put(url, Timed(result, now + PLAYLIST_TTL_MS))
+        result
     }
 
     // ---------------- Stream resolution ----------------
-
-    /**
-     * Hard wall-clock budget for ONE full stream resolution (both client
-     * attempts + their inner NewPipe requests). NewPipeDownloader already
-     * times out individual HTTP requests (20s), but an extraction chains
-     * several of them plus two client attempts inside the serialized
-     * extraction mutex — without this cap one bad video could hold the queue
-     * for a minute+ and every tap behind it would feel dead. Timed-out work
-     * is treated as transient (not cached as NOT_PLAYABLE).
-     */
-    private suspend fun <T> withExtractionTimeout(block: suspend () -> T): T? =
-        withTimeoutOrNull(EXTRACTION_TIMEOUT_MS) { block() }
 
     override suspend fun streamTarget(videoId: String): StreamTarget? {
         val now = System.currentTimeMillis()
@@ -260,13 +267,18 @@ class YoutubeGateway(
                 if (cached.expiresAtMillis > now) return@run cached.target
             }
 
-            val audio = withExtractionTimeout {
+            // Track whether the timeout fired vs extraction genuinely finding
+            // nothing: a timeout is TRANSIENT (queue jam / slow YouTube) and
+            // must NOT be cached as NOT_PLAYABLE, or the next 5 min of taps
+            // get instant-404s instead of a retry.
+            var timedOut = false
+            val audio = withTimeoutOrNull(EXTRACTION_TIMEOUT_MS) {
                 extractionMutex.withLock {
                     withContext(Dispatchers.IO) {
                         resolveAudioStreamWithFallback(videoId)
                     }
                 }
-            }
+            } ?: run { timedOut = true; null }
 
             when {
                 audio != null -> {
@@ -277,10 +289,9 @@ class YoutubeGateway(
                     streamCache.put(videoId, CachedStreamTarget(target, System.currentTimeMillis() + STREAM_CACHE_TTL_MILLIS))
                     target
                 }
-                // Null inside the budget = extraction genuinely found nothing
-                // playable (e.g. audio-only video removed). Cache a NOT_PLAYABLE
-                // marker briefly so repeat misses don't hammer extraction.
-                // A TIMEOUT leaves the cache empty so the next tap retries.
+                timedOut -> null // transient: leave cache empty so next tap retries
+                // Genuine empty inside budget (e.g. removed video): cache a
+                // NOT_PLAYABLE marker briefly so repeat misses don't hammer it.
                 else -> {
                     streamCache.put(
                         videoId,

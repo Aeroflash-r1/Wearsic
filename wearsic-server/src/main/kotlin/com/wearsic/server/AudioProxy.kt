@@ -57,39 +57,116 @@ class AudioProxy(
         // audio. When YouTube already offers AAC (audio/mp4 — the common case),
         // pass it through untouched with zero CPU cost.
         if (transcoder.needsTranscode(target.mimeType)) {
-            transcoder.handle(call, target.url, rangeHeader)
-            return
+            when (val result = transcoder.handle(call, target.url, rangeHeader)) {
+                is Transcoder.TranscodeResult.Streamed,
+                is Transcoder.TranscodeResult.Unavailable,
+                is Transcoder.TranscodeResult.Aborted,
+                -> return // response already committed (audio, 503, or client gone)
+                is Transcoder.TranscodeResult.UpstreamError -> {
+                    if (result.status !in DEAD_URL_STATUSES) {
+                        call.respond(
+                            HttpStatusCode.BadGateway,
+                            ErrorResponse("Upstream audio unavailable (HTTP ${result.status})")
+                        )
+                        return
+                    }
+                    // Dead URL on the transcode path: same self-heal as the
+                    // passthrough path — one fresh re-resolve, then stream it.
+                    val fresh = (extractor as? YoutubeGateway)?.invalidateStreamTarget(videoId)
+                    if (fresh != null) {
+                        logger.info("Self-healed stale transcode URL for {}", videoId)
+                        when (val retry = transcoder.handle(call, fresh.url, rangeHeader)) {
+                            is Transcoder.TranscodeResult.UpstreamError -> call.respond(
+                                HttpStatusCode.BadGateway,
+                                ErrorResponse("Upstream audio unavailable (HTTP ${retry.status})")
+                            )
+                            else -> Unit // Streamed / Unavailable / Aborted already responded
+                        }
+                        return
+                    }
+                    // Re-resolve failed — surface the ORIGINAL upstream error,
+                    // not a generic message, so logs stay actionable.
+                    call.respond(
+                        HttpStatusCode.BadGateway,
+                        ErrorResponse("Upstream audio unavailable (HTTP ${result.status})")
+                    )
+                    return
+                }
+            }
         }
 
-        val outcome = proxyTarget(call, target, rangeHeader)
-
-        // Dead-URL self-heal: 403/404/410 mean the cached CDN URL expired or
-        // was revoked upstream (it can die well inside the 1h cache TTL).
-        // Drop the stale entry, re-resolve once, and stream the fresh URL —
-        // the watch gets audio instead of an error. One retry only.
-        if (outcome == UpstreamOutcome.DEAD_URL) {
-            val fresh = (extractor as? YoutubeGateway)?.invalidateStreamTarget(videoId)
-            if (fresh != null) {
-                logger.info("Self-healed stale stream URL for {}", videoId)
-                if (transcoder.needsTranscode(fresh.mimeType)) {
-                    transcoder.handle(call, fresh.url, rangeHeader)
-                } else {
-                    proxyTarget(call, fresh, rangeHeader)
+        // Passthrough path. proxyTarget no longer commits error responses
+        // itself: it returns the outcome so we can retry once on dead URLs
+        // BEFORE anything is sent (double-respond would throw).
+        when (val outcome = proxyTarget(call, target, rangeHeader)) {
+            is ProxyOutcome.Streamed -> return
+            is ProxyOutcome.Aborted -> return
+            is ProxyOutcome.UpstreamError -> {
+                if (outcome.status !in DEAD_URL_STATUSES) {
+                    call.respond(
+                        HttpStatusCode.BadGateway,
+                        ErrorResponse("Upstream audio unavailable (HTTP ${outcome.status})")
+                    )
+                    return
                 }
-                return
+                // Dead-URL self-heal: 403/404/410 mean the cached CDN URL expired
+                // or was revoked upstream (it can die well inside the 1h cache
+                // TTL). Drop the stale entry, re-resolve once, and stream the
+                // fresh URL — the watch gets audio instead of an error.
+                val fresh = (extractor as? YoutubeGateway)?.invalidateStreamTarget(videoId)
+                if (fresh != null) {
+                    logger.info("Self-healed stale stream URL for {}", videoId)
+                    when (val retry = streamFresh(call, fresh, rangeHeader)) {
+                        is ProxyOutcome.UpstreamError -> call.respond(
+                            HttpStatusCode.BadGateway,
+                            ErrorResponse("Upstream audio unavailable (HTTP ${retry.status})")
+                        )
+                        else -> Unit
+                    }
+                    return
+                }
+                logger.warn("Re-resolve after dead URL failed for {}", videoId)
+                call.respond(
+                    HttpStatusCode.BadGateway,
+                    ErrorResponse("Upstream audio unavailable (HTTP ${outcome.status})")
+                )
             }
-            logger.warn("Re-resolve after dead URL failed for {}", videoId)
         }
     }
 
-    private enum class UpstreamOutcome { STREAMED, DEAD_URL, OTHER_ERROR }
+    private sealed interface ProxyOutcome {
+        data object Streamed : ProxyOutcome
+        data object Aborted : ProxyOutcome
+        data class UpstreamError(val status: Int) : ProxyOutcome
+    }
 
-    /** Streams one resolved [target] to the watch. Never throws for client aborts. */
+    /** Streams one already-resolved [fresh] target (transcode-aware). */
+    private suspend fun streamFresh(
+        call: ApplicationCall,
+        fresh: StreamTarget,
+        rangeHeader: String?,
+    ): ProxyOutcome {
+        if (transcoder.needsTranscode(fresh.mimeType)) {
+            return when (val r = transcoder.handle(call, fresh.url, rangeHeader)) {
+                is Transcoder.TranscodeResult.Streamed -> ProxyOutcome.Streamed
+                is Transcoder.TranscodeResult.Aborted -> ProxyOutcome.Aborted
+                is Transcoder.TranscodeResult.Unavailable -> ProxyOutcome.Streamed // 503 already sent
+                is Transcoder.TranscodeResult.UpstreamError -> ProxyOutcome.UpstreamError(r.status)
+            }
+        }
+        return proxyTarget(call, fresh, rangeHeader)
+    }
+
+    /**
+     * Streams one resolved [target] to the watch. Never commits an error
+     * response itself — returns [ProxyOutcome.UpstreamError] so the caller
+     * can self-heal first. Never throws for client aborts.
+     */
     private suspend fun proxyTarget(
         call: ApplicationCall,
         target: StreamTarget,
         rangeHeader: String?,
-    ): UpstreamOutcome {
+    ): ProxyOutcome {
         return try {
             client.prepareGet(target.url) {
                 // Always ask upstream for a byte range: YouTube's CDN throttles
@@ -99,19 +176,11 @@ class AudioProxy(
                 // client's Range when present, otherwise request from byte 0.
                 header(HttpHeaders.Range, rangeHeader ?: "bytes=0-")
             }.execute { upstream ->
-                // A 4xx/5xx from the CDN must surface as a real error to the
-                // watch — previously the error body was streamed as if it
-                // were audio, leaving the player to fail cryptically.
+                // A 4xx/5xx from the CDN must surface as a real error — but
+                // NOT committed here: the caller retries once on dead URLs
+                // before sending anything (double-respond would throw).
                 if (upstream.status.value >= 400) {
-                    call.respond(
-                        HttpStatusCode.BadGateway,
-                        ErrorResponse("Upstream audio unavailable (HTTP ${upstream.status.value})")
-                    )
-                    return@execute if (upstream.status.value in DEAD_URL_STATUSES) {
-                        UpstreamOutcome.DEAD_URL
-                    } else {
-                        UpstreamOutcome.OTHER_ERROR
-                    }
+                    return@execute ProxyOutcome.UpstreamError(upstream.status.value)
                 }
                 upstream.headers[HttpHeaders.ContentRange]?.let { call.response.header(HttpHeaders.ContentRange, it) }
                 call.response.header(HttpHeaders.AcceptRanges, "bytes")
@@ -125,13 +194,13 @@ class AudioProxy(
                 call.respondBytesWriter(contentType = io.ktor.http.ContentType.parse(target.mimeType), status = status) {
                     upstream.bodyAsChannel().copyAndClose(this)
                 }
-                UpstreamOutcome.STREAMED
+                ProxyOutcome.Streamed
             }
         } catch (e: Exception) {
             // Client disconnected/skipped mid-stream, or upstream failed —
             // not worth a scary 500, this happens routinely on track skips.
             logger.info("Stream proxy ended early: {}", e.message)
-            UpstreamOutcome.OTHER_ERROR
+            ProxyOutcome.Aborted
         }
     }
 }

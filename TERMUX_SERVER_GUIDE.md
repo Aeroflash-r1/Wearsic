@@ -32,14 +32,30 @@ it is detected via `/health` checks every 30 s and killed + restarted, and
 pkg update -y && pkg upgrade -y
 ```
 
-## 2. Get the server onto the phone
+## 2. Install Java, then get the server onto the phone
 
-### Option A — download directly on the phone
+The server is a **JVM application**, so Java 17 is required — it is the one
+package both options need (run-termux.sh installs ffmpeg itself on first
+start):
 
 ```bash
-pkg install -y curl
+pkg install -y openjdk-17 unzip curl
+```
+
+### Option A — download directly on the phone (latest release)
+
+```bash
+# Resolve the actual latest-release ZIP URL automatically (no version guessing):
+ZIP_URL=$(curl -s https://api.github.com/repos/Aeroflash-r1/wearsic/releases/latest \
+  | grep -o 'https://[^"]*wearsic-server-termux-[^"]*\.zip' | head -1)
+curl -L -o ~/wearsic-server-termux.zip "$ZIP_URL"
+```
+
+Or, if you already know the release tag (e.g. `v1.5.0`):
+
+```bash
 curl -L -o ~/wearsic-server-termux.zip \
-  "https://github.com/Aeroflash-r1/wearsic/releases/latest/download/wearsic-server-termux-v<version>.zip"
+  "https://github.com/Aeroflash-r1/wearsic/releases/latest/download/wearsic-server-termux-v1.5.0.zip"
 ```
 
 ### Option B — copy from somewhere else
@@ -49,20 +65,22 @@ Download the zip on a PC/another phone, then move it to the Termux phone
 `/storage/emulated/0/Download/`). Then enable access:
 
 ```bash
-pkg install -y unzip
 termux-setup-storage          # tap ALLOW on the permission popup
-cp ~/storage/downloads/wearsic-server-termux-v<version>.zip ~/
+cp ~/storage/downloads/wearsic-server-termux-*.zip ~/wearsic-server-termux.zip
 ```
 
 ### Extract and enter the folder
 
 ```bash
-cd ~ && unzip -o wearsic-server-termux-v<version>.zip
+cd ~ && unzip -o wearsic-server-termux.zip
 cd ~/wearsic-server
 ```
 
-> If you downloaded from GitHub with Option A, also run:
-> `pkg install -y unzip && cd ~ && unzip -o wearsic-server-termux-v<version>.zip && cd wearsic-server`
+Verify Java is present before the first start:
+
+```bash
+java -version     # should print: openjdk version "17..."
+```
 
 ---
 
@@ -95,7 +113,7 @@ curl http://127.0.0.1:8080/health
 Expected response:
 
 ```json
-{"status":"ok","version":"1.4.1","serverName":"Wearsic Engine","transcoderAvailable":true}
+{"status":"ok","version":"1.5.0","serverName":"Wearsic Engine","transcoderAvailable":true}
 ```
 
 (The exact `version` value depends on the release you installed — it always
@@ -224,10 +242,12 @@ Where your data lives:
 
 ## 8. Keeping it alive long-term (optional)
 
-Install **Termux:Boot** (F-Droid) to auto-start the server after reboot:
+Install the **Termux:Boot** app from F-Droid
+(https://f-droid.org/en/packages/com.termux.boot/) — it runs every script in
+`~/.termux/boot/` when the phone boots. No extra `pkg` package is needed
+(Termux:Boot is an app, not a Termux package):
 
 ```bash
-pkg install -y termux-services
 mkdir -p ~/.termux/boot
 cat > ~/.termux/boot/start-wearsic.sh <<'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
@@ -237,7 +257,9 @@ EOF
 chmod +x ~/.termux/boot/start-wearsic.sh
 ```
 
-Reboot the phone once to confirm it comes up by itself.
+Also set Android Settings → Apps → Termux → Battery → **Unrestricted** so
+Android never freezes the server in the background. Reboot the phone once to
+confirm it comes up by itself.
 
 ---
 

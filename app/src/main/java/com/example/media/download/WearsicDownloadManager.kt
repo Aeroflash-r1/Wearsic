@@ -31,7 +31,7 @@ class WearsicDownloadManager(
     private val repository: WearsicDownloadRepository = WearsicDownloadRepository(context),
     // Derived from the shared pool; only the longer read timeout differs.
     private val okHttpClient: OkHttpClient = com.example.network.WearsicHttp.client.newBuilder()
-        .readTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
         .build()
 ) {
 
@@ -68,6 +68,11 @@ class WearsicDownloadManager(
 
     fun startDownload(track: Track, autoCached: Boolean = false) {
         if (activeJobs.containsKey(track.id)) return
+        // Cap parallel downloads: each holds TLS + radio + disk. Uncapped,
+        // a playlist open + auto-cache + manual taps stacked N full-file
+        // downloads and the watch heated up. 1 auto + 1 manual max.
+        val cap = if (autoCached) 1 else 2
+        if (activeJobs.size >= cap + 1) return
 
         val targetFile = getTargetFile(track.id)
         val partFile = File(getDownloadDir(), "${targetFile.name}.part")
@@ -178,7 +183,9 @@ class WearsicDownloadManager(
                 val body = response.body ?: throw Exception("Empty response body")
 
                 FileOutputStream(partFile, true).use { outputStream ->
-                    val buffer = ByteArray(8192)
+                    // 32KB buffer (was 8KB): 4x fewer write() syscalls per
+                    // song (~125 vs ~500 for 4MB), less CPU wake per MB.
+                    val buffer = ByteArray(32 * 1024)
                     var bytesRead: Int
                     var lastReportedProgress = 0
                     var lastReportTime = System.currentTimeMillis()

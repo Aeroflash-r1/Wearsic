@@ -49,10 +49,11 @@ the new `settings` table (used to persist the YouTube cookie) is additive.
 The source below **supersedes** the patched jar — do not re-apply old
 bytecode patches (see `../server-patches/PATCHES.md`, kept as history only):
 
-- **Search**: iTunes-first (~150-300 ms, no YouTube round trip when iTunes has
-  results); the YouTube fallback runs only when iTunes returns nothing.
-  Filtered (`music_songs`) and unfiltered YouTube searches run concurrently
-  and the loser is cancelled.
+- **Search**: YouTube Music-first (official titles/artists/durations with
+  directly playable videoIds — no iTunes, no surrogate matching step); the
+  NewPipeExtractor YouTube search runs only as fallback when YTM is
+  unreachable. The top results' streams are pre-resolved in the background
+  so taps play instantly.
 - **Stream resolution**: tries the iOS-spoofed YouTube client first (the one
   that actually works), falls back to the default client only if that fails.
   Because `setFetchIosClient` is a process-global static, ALL extractions are
@@ -82,9 +83,9 @@ bytecode patches (see `../server-patches/PATCHES.md`, kept as history only):
 
 ## Verified
 
-`./gradlew :wearsic-server:test` runs 80 offline unit/integration tests
-(matcher scoring, search fallback, SingleFlight dedup, database CRUD incl.
-wildcard playlist deletion and persisted surrogate matches, JSON contract,
+`./gradlew :wearsic-server:test` runs offline unit/integration tests
+(YTM parsing/durations, search fallback, SingleFlight dedup, database CRUD incl.
+wildcard playlist deletion and legacy surrogate matches, JSON contract,
 Ktor routes/auth/errors/rate limit, transcoder plumbing). CI runs them on
 every push, and the release pipeline boots the packaged server and asserts
 `/health` reports the source version before publishing.

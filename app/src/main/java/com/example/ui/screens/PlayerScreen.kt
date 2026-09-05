@@ -204,7 +204,11 @@ private fun PlayerHeader(
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(artworkUrl)
-                    .size(512)
+                    // 96.dp @ ~2x watch density ≈ 200px. 512px was 2.5x
+                    // oversized: 4x pixels to decode, 4x RAM, 4x radio on
+                    // cache miss — pure heat for zero visible gain.
+                    .size(256)
+                    .crossfade(false)
                     .build(),
                 contentDescription = title,
                 contentScale = ContentScale.Crop,
@@ -418,13 +422,17 @@ private fun BlobProgressPod(
     )
 
     // Slow rotation only while buffering (activity cue, zero cost when idle).
+    // 10fps (was 20fps) + 15s auto-cancel: a stuck network no longer spins
+    // the GPU forever and heats the watch — falls back to a static icon.
     val bufferingSpin = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(isBuffering) {
         if (!isBuffering) return@LaunchedEffect
         var last = System.nanoTime()
+        val deadline = last + 15_000_000_000L
         while (true) {
-            delay(50)
+            delay(100)
             val now = System.nanoTime()
+            if (now > deadline) break
             bufferingSpin.floatValue += ((now - last) / 1_000_000_000f) * 60f
             last = now
         }

@@ -3,6 +3,7 @@ package com.example.ui.viewmodel
 import android.app.Application
 import android.content.Context
 import android.net.ConnectivityManager
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.WearsicApp
@@ -233,16 +234,26 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
 
     // Lightweight client used only to pre-warm the server's stream cache for
     // the NEXT track in the queue, so it starts playing instantly.
+    // Short timeouts (was 10s/15s): a stalled warm-up held radio + thread
+    // 15s for a 1-byte probe. Fail fast — real playback retries anyway.
     private val warmUpClient = com.example.network.WearsicHttp.client.newBuilder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .callTimeout(8, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(false)
         .build()
     @Volatile
     private var lastWarmUpTrackId: String? = null
 
     /** How many tracks of a freshly-opened list get pre-warmed. */
     private companion object {
-        const val WARM_UP_LIST_HEAD_COUNT = 3
+        // Was 3: opening a playlist fired 3 parallel TLS handshakes for
+        // 1-byte probes. 1 head warm + next-track warm covers ~90% of taps
+        // with 1/3 the radio wake.
+        const val WARM_UP_LIST_HEAD_COUNT = 1
+
+        /** A track must be current this long before it is auto-cached offline. */
+        const val AUTO_CACHE_LISTEN_MS = 45_000L
     }
 
     init {
@@ -265,36 +276,41 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
                 downloadManager.maxAutoCachedTracks = limit.coerceIn(5, 200)
             }
         }
-        // No cache setup at startup: the cache limit defaults to 128MB and the
-        // playback cache is built lazily by the media session. Applying the
-        // limit here used to release/rebuild the SimpleCache while the player
-        // was active, which caused IO errors on slow watches.
+        // No cache setup at startup: the cache limit defaults to 32MB
+        // (configurable in Settings) and the playback cache is built lazily by
+        // the media session. Applying the limit here used to release/rebuild
+        // the SimpleCache while the player was active, which caused IO errors
+        // on slow watches.
 
-        // GUARANTEED offline layer: every streamed song that starts playing is
-        // immediately saved as a real download (subject to the Auto-Cache
-        // toggle, network availability and the 15-song auto-cache cap). This
-        // replaces reliance on ExoPlayer's opaque stream cache — play a song
-        // once online and it plays forever offline. The NEXT queued track is
-        // also pre-warmed on the server to kill extraction delay.
+        // GUARANTEED offline layer: every song that is actually LISTENED to
+        // becomes a real download (subject to the Auto-Cache toggle, network
+        // availability and the auto-cache cap). This replaces reliance on
+        // ExoPlayer's opaque stream cache — listen once and it plays forever
+        // offline. The NEXT queued track is also pre-warmed on the server to
+        // kill extraction delay.
         viewModelScope.launch {
             val autoCachedTrackIds = mutableSetOf<String>()
             var lastTrack: Track? = null
+            var trackBecameCurrentAtMs = 0L
 
             playbackController.uiState.collect { state ->
                 val track = state.currentTrack
                 if (track.id.isNotBlank()) {
                     if (track.id != lastTrack?.id) {
-                        // Track changed: save the previous one if mid-play.
-                        lastTrack?.let { previous ->
-                            maybeAutoCacheTrack(previous, autoCachedTrackIds)
-                        }
                         lastTrack = track
                         recentRepository.recordPlayed(track)
+                        trackBecameCurrentAtMs = SystemClock.elapsedRealtime()
                     }
 
-                    // Save the CURRENT track too so even the first song of a
-                    // session is protected.
-                    maybeAutoCacheTrack(track, autoCachedTrackIds)
+                    // Defer the auto-cache until the song has been current for
+                    // ~45s: starting the full-file download the instant a track
+                    // plays doubled network on first play (stream + download
+                    // racing) and quick skips still paid for a whole wasted
+                    // file. 45s of listening is real intent — and a few MB
+                    // over WiFi finishes long before the song does.
+                    if (SystemClock.elapsedRealtime() - trackBecameCurrentAtMs >= AUTO_CACHE_LISTEN_MS) {
+                        maybeAutoCacheTrack(track, autoCachedTrackIds)
+                    }
 
                     // Pre-warm the server for the upcoming song (1-byte request:
                     // the server resolves + caches the real stream URL so the

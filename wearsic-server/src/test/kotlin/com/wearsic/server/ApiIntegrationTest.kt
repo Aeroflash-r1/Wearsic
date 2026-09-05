@@ -50,12 +50,10 @@ class ApiIntegrationTest {
         val gateway = FakeGateway()
         val orchestrator = MetadataSearchOrchestrator(
             metadata = object : MetadataSource {
-                override suspend fun searchSongs(query: String, limit: Int) = emptyList<ITunesTrack>()
-                override suspend fun lookupTrack(trackId: Long) = null
-                override fun toTrackDto(track: ITunesTrack) = TrackDto("it:${track.trackId}", "t", "u")
+                override suspend fun searchSongs(query: String, limit: Int) = emptyList<YtmTrack>()
+                override fun toTrackDto(track: YtmTrack) = TrackDto(track.videoId, "t", "u")
             },
             youtube = gateway,
-            matcher = TrackMatcher(gateway as YoutubeMetadataClient),
         )
         val transcoder = Transcoder(
             client = io.ktor.client.HttpClient(io.ktor.client.engine.cio.CIO),

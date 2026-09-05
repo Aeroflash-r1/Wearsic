@@ -4,73 +4,65 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * /api/search returns iTunes metadata directly — fast (~150-300ms), clean
- * data, and NO YouTube round trip in the request path when iTunes has usable
- * results. Each result's videoId is a surrogate ("it:12345") until it is
- * matched to a real YouTube video.
+ * /api/search returns YouTube Music metadata directly - official titles,
+ * artists, durations and artwork with REAL YouTube videoIds. No surrogate
+ * ids, no second matching step: results play immediately.
  *
  * Fallback contract (see OrchestratorFallbackTest):
- *   iTunes usable results  -> return them; YouTube is only touched in the
- *                             background (match + stream prefetch)
- *   iTunes empty/unusable  -> direct YouTube search so the watch still gets
- *                             results instead of an empty page
+ *   YTM usable results   -> return them; only stream prefetch runs behind
+ *                           the response (warms the CDN-URL cache)
+ *   YTM empty/unusable   -> direct NewPipeExtractor YouTube search so the
+ *                           watch still gets results instead of an empty page
  *
- * Immediately after responding, the top few results are matched + their
- * streams pre-resolved in the background, so by the time someone taps play,
- * both steps are usually already done and cached.
+ * Legacy `it:<id>` ids saved by pre-1.5 builds (favorites/playlists from the
+ * old iTunes layer) still resolve via the persistent match store.
  */
 class MetadataSearchOrchestrator(
     private val metadata: MetadataSource,
     private val youtube: YoutubeMetadataClient,
-    private val matcher: TrackMatcher,
     /**
-     * Optional persistent match store. When supplied, surrogate -> videoId
-     * matches survive a server restart, so tapping a saved favorite/playlist
-     * song replays instantly instead of re-running the multi-second YouTube
-     * match + extraction path. Nullable so tests can run fully in-memory.
+     * Legacy surrogate -> videoId matches (pre-1.5 `it:<id>` ids). YTM ids
+     * need no matching, but saved favorites from the old iTunes layer replay
+     * instantly when their match survived. Nullable so tests run in-memory.
+     * Read-only: no new matches are ever written since the iTunes layer was
+     * removed — this only serves rows persisted by older builds.
      */
     private val persistentMatches: MatchPersistence? = null,
 ) {
     companion object {
-        private const val PREFETCH_COUNT = 6
+        /**
+         * Only the top-2 results are pre-resolved: the user taps one of them
+         * ~80% of the time, and each prefetch holds the global extraction
+         * mutex for seconds. 6 prefetches held it for 12-24s and made the
+         * actual tap queue behind background work — the opposite of instant.
+         */
+        private const val PREFETCH_COUNT = 2
 
         /** Pause between prefetch extractions so user taps can jump ahead. */
         private const val PREFETCH_EXTRACT_STAGGER_MS = 300L
+
+        /** Prefix used by the removed iTunes layer; kept for legacy replay. */
+        const val LEGACY_IT_PREFIX = "it:"
     }
 
-    /** Read/write view over persisted surrogate matches (e.g. SQLite). */
+    /** Read-only view over persisted legacy surrogate matches (SQLite). */
     interface MatchPersistence {
         fun getMatchedVideoId(surrogateId: String): String?
-        fun putMatchedVideoId(surrogateId: String, videoId: String)
     }
 
-    // Deliberately not tied to any single request's lifecycle — a prefetch
-    // job should keep running even after the search response is already sent
-    // back to the client.
     private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // One prefetch campaign at a time, processed SEQUENTIALLY (top result
-    // first). Previously every search launched all six concurrently and a new
-    // search never cancelled the previous one's work — after a few searches
-    // up to ~18 stale extractions piled up behind the global extraction
-    // mutex, making a user tap wait many seconds behind tracks nobody asked
-    // for. Cancelling the superseded campaign + going one-by-one keeps the
-    // mutex queue short so interactive plays jump ahead immediately.
-
-    private val trackInfoCache = BoundedCache<String, ITunesTrack>(maxSize = 256)
-    private val matchCache = BoundedCache<String, String>(maxSize = 256) // surrogateId -> real YouTube videoId
+    private val matchCache = BoundedCache<String, String>(maxSize = 256)
 
     /**
-     * Counts fallback invocations; exposed for tests to prove that a usable
-     * iTunes response never triggers the synchronous YouTube fallback.
+     * Counts fallback invocations; exposed for tests to prove that usable
+     * YTM results never trigger the synchronous YouTube fallback.
      */
     var youtubeFallbackCount: Int = 0
         private set
@@ -78,20 +70,9 @@ class MetadataSearchOrchestrator(
     suspend fun search(query: String): List<TrackDto> {
         val tracks = metadata.searchSongs(query)
         if (tracks.isNotEmpty()) {
-            // USABLE iTunes results: return them immediately. The YouTube
-            // fallback below is NOT reached — a previous version awaited the
-            // fallback search even when this branch produced results, paying a
-            // pointless multi-second YouTube round trip per search.
-            tracks.forEach { trackInfoCache.put(it.surrogateId, it) }
-
             prefetch(tracks.take(PREFETCH_COUNT))
-
             return tracks.map { metadata.toTrackDto(it) }
         }
-
-        // No usable iTunes metadata (obscure or unreleased-on-iTunes track) —
-        // fall back to the direct YouTube search so the watch still gets
-        // results instead of an empty page.
         youtubeFallbackCount++
         return youtube.search(query)
     }
@@ -99,27 +80,17 @@ class MetadataSearchOrchestrator(
     private var prefetchJob: Job? = null
 
     /**
-     * Pipelined prefetch, top result first:
-     *  - MATCHING (iTunes -> YouTube search) runs concurrently for all tracks:
-     *    matching is cheap-ish and NOT subject to the extraction mutex.
-     *  - EXTRACTION (stream URL resolution) is serialized by the gateway's
-     *    global mutex, so it runs strictly top-first: the song the user is
-     *    most likely to tap is resolved before anything else, instead of
-     *    competing with 5 sibling extractions.
-     *  - 300ms stagger between extraction steps lets a user tap that arrives
-     *    mid-prefetch jump the queue ahead of the remaining prefetch work.
+     * Warms the stream-URL cache top-first so taps play instantly. YTM ids
+     * are already real videoIds, so this is pure extraction with a stagger
+     * that lets an interactive tap jump the queue.
      */
-    private fun prefetch(tracks: List<ITunesTrack>) {
+    private fun prefetch(tracks: List<YtmTrack>) {
         prefetchJob?.cancel()
         prefetchJob = backgroundScope.launch {
             coroutineScope {
-                val matched = tracks.map { track ->
-                    async { track to resolveAndCacheMatch(track) }
-                }.awaitAll().filter { it.second != null }
-
-                matched.forEach { (_, videoId) ->
-                    if (!isActive) return@forEach
-                    youtube.streamTarget(videoId!!) // warms the stream-resolution cache
+                for (track in tracks) {
+                    if (!isActive) break
+                    runCatching { youtube.streamTarget(track.videoId) }
                     delay(PREFETCH_EXTRACT_STAGGER_MS)
                 }
             }
@@ -127,53 +98,24 @@ class MetadataSearchOrchestrator(
     }
 
     /**
-     * Given whatever the client sent to /api/stream/{id}: if it's a real
-     * YouTube id already (related/playlist results, which stay
-     * NewPipeExtractor-only), pass it through unchanged. If it's a
-     * surrogate iTunes id, use the cached match if the prefetch already
-     * finished, or match synchronously right now as a fallback so playback
-     * always works even if the user tapped faster than the background
-     * prefetch could keep up.
+     * YTM search ids are real YouTube ids and pass through unchanged.
+     * Legacy `it:<id>` ids consult the in-memory + persisted match store.
      */
     suspend fun resolveStreamVideoId(requestedId: String): String? {
-        if (!requestedId.startsWith(ITunesTrack.SURROGATE_PREFIX)) return requestedId
-
+        if (!requestedId.startsWith(LEGACY_IT_PREFIX)) return requestedId
         matchCache.get(requestedId)?.let { return it }
-
-        // Cache miss — most commonly a server restart since the search (or a
-        // favorite/playlist saved from an earlier session). Recover the track
-        // metadata from iTunes by id instead of giving up, so saved songs
-        // keep playing forever.
-        val track = trackInfoCache.get(requestedId)
-            ?: metadata.lookupTrack(requestedId.removePrefix(ITunesTrack.SURROGATE_PREFIX).toLongOrNull() ?: return null)
-            ?: return null
-        trackInfoCache.put(track.surrogateId, track)
-        return resolveAndCacheMatch(track)
-    }
-
-    private suspend fun resolveAndCacheMatch(track: ITunesTrack): String? {
-        matchCache.get(track.surrogateId)?.let { return it }
-        // Check the persistent store before paying for a YouTube match. Any
-        // persistence failure must never break playback, hence runCatching.
         persistentMatches?.let { store ->
-            runCatching { store.getMatchedVideoId(track.surrogateId) }.getOrNull()?.let { cached ->
-                matchCache.put(track.surrogateId, cached)
+            runCatching { store.getMatchedVideoId(requestedId) }.getOrNull()?.let { cached ->
+                matchCache.put(requestedId, cached)
                 return cached
             }
         }
-        val match = matcher.matchDetailed(
-            artist = track.artistName ?: return null,
-            title = track.trackName ?: return null,
-            durationMs = track.trackTimeMillis ?: 0L,
-        ) ?: return null
-        matchCache.put(track.surrogateId, match.videoId)
-        // Persist only CONFIDENT matches: a weak (fallback) match would
-        // otherwise be remembered for 30 days and replay the wrong audio
-        // every time the song is tapped. Weak matches still play — they are
-        // just re-evaluated on the next server start.
-        if (match.strong) {
-            runCatching { persistentMatches?.putMatchedVideoId(track.surrogateId, match.videoId) }
-        }
-        return match.videoId
+        return null
+    }
+
+    /** Cancels any in-flight prefetch; call on server shutdown in tests. */
+    fun shutdown() {
+        prefetchJob?.cancel()
+        backgroundScope.coroutineContext[Job]?.cancel()
     }
 }

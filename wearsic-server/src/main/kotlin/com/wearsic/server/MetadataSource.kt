@@ -3,21 +3,28 @@ package com.wearsic.server
 /**
  * Abstraction over the music-metadata source used by /api/search. Exists so
  * the search orchestration can be unit-tested without network access.
+ *
+ * The production source is YouTube Music (InnerTube), which returns real
+ * YouTube videoIds directly - no surrogate ids, no second matching step.
  */
 interface MetadataSource {
-    /** Search iTunes for songs matching [query]. Empty when nothing usable. */
-    suspend fun searchSongs(query: String, limit: Int = 10): List<ITunesTrack>
+    /** Search YouTube Music for songs matching [query]. Empty when nothing usable. */
+    suspend fun searchSongs(query: String, limit: Int = 10): List<YtmTrack>
 
-    /** Recover one track's metadata by its iTunes numeric id (surrogate recovery). */
-    suspend fun lookupTrack(trackId: Long): ITunesTrack?
+    /**
+     * Recover one track's metadata by videoId. YTM ids are already playable
+     * so the production source has nothing to recover (default null); kept
+     * for interface symmetry and fakes.
+     */
+    suspend fun lookupTrack(videoId: String): YtmTrack? = null
 
-    /** Convert an iTunes track to the wire DTO (videoId = surrogate "it:<id>"). */
-    fun toTrackDto(track: ITunesTrack): TrackDto
+    /** Convert a YTM track to the wire DTO (videoId is the real YouTube id). */
+    fun toTrackDto(track: YtmTrack): TrackDto
 }
 
 /**
  * Abstraction over the YouTube extraction layer (NewPipeExtractor). Exists so
- * TrackMatcher, AudioProxy, the routes and tests can work against canned
+ * AudioProxy, the routes and tests can work against canned
  * results without any network access.
  */
 interface YoutubeMetadataClient {

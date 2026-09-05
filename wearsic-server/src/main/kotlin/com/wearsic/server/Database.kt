@@ -118,18 +118,16 @@ class Database(dbPath: String) {
         }
     }
 
-    // ---------------- Surrogate -> YouTube match persistence ----------------
+    // ---------------- Legacy surrogate -> YouTube match persistence ----------------
 
     /**
-     * Persists surrogate ("it:12345") -> real YouTube videoId matches so a
-     * server restart does not throw the matching work away: favorites and
-     * playlists replay instantly after a restart instead of re-running the
-     * multi-second YouTube match + extraction path.
+     * Legacy read-only lookup for surrogate ("it:12345") -> real YouTube
+     * videoId matches persisted by pre-YTM builds. No new rows are written
+     * since the iTunes layer was removed — this only serves upgrade replay
+     * for favorites/playlists saved before the YouTube Music migration.
      *
-     * Entries are treated as stale (and re-matched) after [MATCH_STALE_MS] —
-     * a persisted match pointing at a since-deleted video self-heals — and
-     * the table is kept bounded by evicting oldest rows beyond
-     * [MAX_MATCH_ROWS].
+     * Entries are treated as stale after [MATCH_STALE_MS] and the table stays
+     * bounded via [putMatchedVideoId]'s eviction (kept for tests/backfill).
      */
     fun getMatchedVideoId(surrogateId: String, nowMs: Long = System.currentTimeMillis()): String? =
         synchronized(lock) {

@@ -238,20 +238,28 @@ class WearsicPlaybackController(private val context: Context) {
         positionUpdateJob?.cancel()
         positionUpdateJob = scope.launch {
             var idleTicks = 0
+            var lastEmittedSecond = -1L
             while (isActive) {
                 val controller = mediaController
                 if (controller != null && controller.isPlaying) {
                     idleTicks = 0
                     val pos = controller.currentPosition.coerceAtLeast(0L)
                     val dur = if (controller.duration > 0) controller.duration else _uiState.value.durationMs
-                    _uiState.update { it.copy(currentPositionMs = pos, durationMs = dur) }
+                    // 2s cadence + same-second dedupe: halves recompositions
+                    // (3600→1800/hr) and Canvas redraws. 2s steps are invisible
+                    // on a 1.2" round screen but let the SoC sleep twice as long.
+                    val second = pos / 2000L
+                    if (second != lastEmittedSecond) {
+                        lastEmittedSecond = second
+                        _uiState.update { it.copy(currentPositionMs = pos, durationMs = dur) }
+                    }
                 } else {
                     // Not playing (paused/ended): stop ticking entirely to save
                     // battery instead of looping forever.
                     idleTicks++
                     if (idleTicks >= 2) break
                 }
-                delay(1000L) // 1s cadence: smooth progress with minimal wakeups
+                delay(2000L) // 2s cadence: smooth-enough progress, minimal wakeups
             }
         }
     }

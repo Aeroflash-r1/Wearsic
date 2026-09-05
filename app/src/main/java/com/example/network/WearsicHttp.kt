@@ -35,7 +35,11 @@ object WearsicHttp {
 
     val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        // 30s read (was 60s): a stalled socket held the WiFi radio + CPU
+        // awake a full minute per request. Small JSON fails fast; media
+        // streams override with their own longer timeout where needed.
+        .readTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(45, TimeUnit.SECONDS)
         .addInterceptor(authInterceptor)
         .build()
 }

@@ -39,10 +39,12 @@ class TrackDtoContractTest {
         // The server never sends streamUrl; the client synthesizes it.
         assertEquals("", track.streamUrl)
         // toDomainTrack() applies the artwork upscale and carries the id.
+        // w256-h256: sharp enough for the 96dp header + blurred ambient glow
+        // at ~1/4 the bytes of the old w544-h544 (less radio = less heat).
         val domain = track.toDomainTrack()
         assertEquals("NZ3Ck43m_ZY", domain.id)
         assertEquals("Crowded House", domain.artist)
-        assertTrue(domain.artworkUrl!!.contains("w544-h544"))
+        assertTrue(domain.artworkUrl!!.contains("w256-h256"))
     }
 
     @Test

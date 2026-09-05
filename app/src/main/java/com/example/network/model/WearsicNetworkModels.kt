@@ -45,13 +45,14 @@ data class TrackDto(
     }
 
     /**
-     * Server search results ship 60x60 thumbnails (`...=w60-h60-l90-rj`).
-     * YouTube resizes on the fly — swapping the size segment gives us crisp
-     * artwork everywhere for a few extra KB per image.
+     * Server search results ship small thumbnails (e.g. `...=w60-h60-l90-rj`).
+     * YouTube resizes on the fly — swap the size segment to w256-h256: sharp
+     * enough for the 96dp header artwork and the blurred ambient glow, while
+     * cutting image bytes ~4x vs the old w544-h544 (less radio = less heat).
      */
     private fun String.toHighResArtwork(): String {
         return if (contains("ytimg") || contains("googleusercontent")) {
-            replace(Regex("w\\d+-h\\d+"), "w544-h544")
+            replace(Regex("w\\d+-h\\d+"), "w256-h256")
         } else {
             this
         }
@@ -84,7 +85,7 @@ data class AlbumDto(
             trackCount = trackCount,
             thumbnailUrl = thumbnailUrl?.let { url ->
                 if (url.contains("ytimg") || url.contains("googleusercontent")) {
-                    url.replace(Regex("w\\d+-h\\d+"), "w544-h544")
+                    url.replace(Regex("w\\d+-h\\d+"), "w256-h256")
                 } else url
             }
         )

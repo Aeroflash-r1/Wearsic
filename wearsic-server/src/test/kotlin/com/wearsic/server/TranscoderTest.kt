@@ -205,7 +205,13 @@ class TranscoderTest {
                     }
                     routing {
                         routeGet("/stream") {
-                            transcoder.handle(call, "http://127.0.0.1:$port/broken", null)
+                            when (val r = transcoder.handle(call, "http://127.0.0.1:$port/broken", null)) {
+                                is Transcoder.TranscodeResult.UpstreamError -> call.respond(
+                                    HttpStatusCode.BadGateway,
+                                    ErrorResponse("Upstream audio unavailable (HTTP ${r.status})")
+                                )
+                                else -> Unit
+                            }
                         }
                     }
                 }

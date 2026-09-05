@@ -78,19 +78,37 @@ class Transcoder(
     fun needsTranscode(mimeType: String): Boolean =
         !mimeType.contains("mp4", ignoreCase = true)
 
-    suspend fun handle(call: ApplicationCall, sourceUrl: String, rangeHeader: String?) {
+    /**
+     * Transcode result — returned WITHOUT committing an error response for
+     * upstream failures so the caller ([AudioProxy]) can still self-heal
+     * (invalidate + retry once) before anything is sent to the watch.
+     * Committing a 502 first would make the retry a double-respond.
+     */
+    sealed interface TranscodeResult {
+        data object Streamed : TranscodeResult
+        data class UpstreamError(val status: Int) : TranscodeResult
+        data object Unavailable : TranscodeResult
+        data object Aborted : TranscodeResult
+    }
+
+    suspend fun handle(call: ApplicationCall, sourceUrl: String, rangeHeader: String?): TranscodeResult {
         if (!available) {
             call.respond(
                 HttpStatusCode.ServiceUnavailable,
                 ErrorResponse("This song needs server-side AAC conversion, but ffmpeg isn't installed. In Termux run: pkg install ffmpeg")
             )
-            return
+            return TranscodeResult.Unavailable
         }
 
         // Streaming conversion honors byte offsets by discarding that much
         // output (ADTS bytes are continuous), so ExoPlayer seeks and the app's
         // download-resume both stay correct even on transcoded songs.
         val startByte = parseRangeStart(rangeHeader)
+
+        // Holds an upstream failure status so the caller can self-heal.
+        // Null = streamed OK (or client aborted mid-stream — routine, no retry).
+        var upstreamFailure: Int? = null
+        var aborted = false
 
         sharedSlots.withPermit {
             val process = ProcessBuilder(
@@ -109,10 +127,10 @@ class Transcoder(
                     header(HttpHeaders.Range, "bytes=0-")
                 }.execute { upstream ->
                     if (upstream.status.value >= 400) {
-                        call.respond(
-                            HttpStatusCode.BadGateway,
-                            ErrorResponse("Upstream audio unavailable (HTTP ${upstream.status.value})")
-                        )
+                        // Don't respond here — let AudioProxy retry with a
+                        // fresh URL first (dead-URL self-heal). It sends the
+                        // final 502 only if the retry also fails.
+                        upstreamFailure = upstream.status.value
                         return@execute
                     }
                     val upstreamChannel = upstream.bodyAsChannel()
@@ -176,9 +194,16 @@ class Transcoder(
             } catch (e: Exception) {
                 // Client disconnected/skipped, or ffmpeg failed — routine on skips.
                 logger.info("Transcode proxy ended early: {}", e.message)
+                aborted = true
             } finally {
                 runCatching { process.destroy() }
             }
+        }
+
+        return when {
+            upstreamFailure != null -> TranscodeResult.UpstreamError(upstreamFailure!!)
+            aborted -> TranscodeResult.Aborted
+            else -> TranscodeResult.Streamed
         }
     }
 

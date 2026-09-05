@@ -60,7 +60,7 @@ This client is fully hardened to support any standard Ktor/OkHttp endpoint follo
 ```json
 {
   "status": "ok",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "serverName": "Wearsic Engine",
   "transcoderAvailable": true
 }
@@ -124,7 +124,7 @@ This client is fully hardened to support any standard Ktor/OkHttp endpoint follo
 ## 📡 API Contract & Server Architecture
 
 The Wearsic watch application is a **lightweight streaming client**. To protect the watch's battery, processor, and cellular data consumption:
-- All heavy work — metadata search (iTunes-first), YouTube extraction via NewPipeExtractor, and on-the-fly ffmpeg transcoding — happens in the **Wearsic Ktor server** (`wearsic-server/`, the canonical source implementation).
+- All heavy work — metadata search (YouTube Music-first), YouTube extraction via NewPipeExtractor, and on-the-fly ffmpeg transcoding — happens in the **Wearsic Ktor server** (`wearsic-server/`, the canonical source implementation).
 - The watch communicates with the server via the stable HTTP API documented in [API_CONTRACT.md](./API_CONTRACT.md).
 - To run the server on a spare Android phone with Termux, follow [TERMUX_SERVER_GUIDE.md](./TERMUX_SERVER_GUIDE.md).
 
@@ -175,5 +175,5 @@ keytool -genkeypair -v -keystore my-upload-key.jks -alias upload \
 Then cut a release:
 
 ```bash
-git tag v1.0.1 && git push origin v1.0.1
+git tag v1.5.0 && git push origin v1.5.0
 ```

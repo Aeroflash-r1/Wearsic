@@ -15,8 +15,8 @@ import io.ktor.server.plugins.callloging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.application.log
+import io.ktor.server.plugins.origin
 import io.ktor.server.request.header
-import io.ktor.server.request.host
 import io.ktor.server.request.receive
 import io.ktor.server.request.uri
 import io.ktor.server.response.respond
@@ -40,7 +40,25 @@ fun main() {
     // so every song re-matches with the fixed logic once.
     database.clearStaleMatchesOnce("matcher_version_wipe", "1.4.4")
     val gateway = YoutubeGateway()
-    val proxyClient = HttpClient(CIO)
+    // Tuned like NewPipeDownloader (12s/20s): the default CIO client has NO
+    // timeouts, so one stalled googlevideo.com CDN connection parked a server
+    // worker forever and the watch spun buffering until it heated up.
+    val proxyClient = HttpClient(CIO) {
+        engine {
+            maxConnectionsCount = 20
+            endpoint.apply {
+                maxConnectionsPerRoute = 10
+                keepAliveTime = 30_000
+                connectAttempts = 2
+            }
+        }
+        install(io.ktor.client.plugins.HttpTimeout) {
+            connectTimeoutMillis = 12_000
+            requestTimeoutMillis = 20_000
+            socketTimeoutMillis = 20_000
+        }
+        expectSuccess = false
+    }
 
     // Detect ffmpeg so songs without native AAC can be converted server-side.
     // Without it those rare songs answer 503 with install guidance instead.
@@ -53,20 +71,17 @@ fun main() {
     val audioProxy = AudioProxy(gateway, proxyClient, transcoder)
     val apiKey = System.getenv("WEARSIC_API_KEY")?.trim()?.takeIf { it.isNotEmpty() }
 
-    // /api/search is iTunes-first (fast metadata, no YouTube round trip in the
-    // request path); the orchestrator matches results to real YouTube videos
-    // and pre-resolves their streams in the background so taps are instant.
-    val iTunes = ITunesService()
-    val matcher = TrackMatcher(gateway)
-    // Persist surrogate -> videoId matches so saved songs replay instantly
-    // after a restart instead of re-running the YouTube match path.
+    // /api/search is YouTube Music-first: official titles/artists/durations
+    // with REAL videoIds (no surrogate matching step). The orchestrator
+    // pre-resolves streams in the background so taps are instant.
+    val ytmusic = YTMusicService()
+    // Persist legacy surrogate -> videoId matches so favorites saved by
+    // pre-1.5 builds (old iTunes `it:<id>` ids) still replay after upgrade.
     val searchOrchestrator = MetadataSearchOrchestrator(
-        iTunes, gateway, matcher,
+        ytmusic, gateway,
         persistentMatches = object : MetadataSearchOrchestrator.MatchPersistence {
             override fun getMatchedVideoId(surrogateId: String): String? =
                 database.getMatchedVideoId(surrogateId)
-            override fun putMatchedVideoId(surrogateId: String, videoId: String) =
-                database.putMatchedVideoId(surrogateId, videoId)
         },
     )
 
@@ -163,8 +178,13 @@ fun Application.module(
 
             get("/stream/{videoId}") {
                 val requestedId = call.parameters["videoId"]!!
+                // Per-client bucket: authenticated callers share the API-key
+                // bucket; open servers bucket by real client IP. Must use
+                // origin.remoteHost — request.host() is the SERVER's Host
+                // header (same for everyone), which collapsed all open-mode
+                // callers into one global bucket.
                 val clientKey = call.request.headers["X-Wearsic-Key"]
-                    ?: call.request.host()
+                    ?: call.request.origin.remoteHost
                     ?: "unknown"
                 if (!streamLimiter.tryAcquire(clientKey)) {
                     call.respond(
@@ -173,11 +193,10 @@ fun Application.module(
                     )
                     return@get
                 }
-                // Resolves a surrogate iTunes id ("it:12345") to a real
-                // YouTube videoId — usually already cached from the background
-                // prefetch kicked off at search time, or recovered from iTunes
-                // by id when the server restarted since. Real YouTube ids
-                // (related/playlist results) pass through unchanged.
+                // YTM search ids are already real YouTube videoIds -
+                // usually stream-prefetched at search time. Legacy `it:<id>`
+                // ids from pre-1.5 builds resolve via the persisted match
+                // store. Real YouTube ids (related/playlist) pass through.
                 val realVideoId = searchOrchestrator.resolveStreamVideoId(requestedId)
                 if (realVideoId == null) {
                     call.respond(
@@ -201,10 +220,8 @@ fun Application.module(
 
             get("/related/{videoId}") {
                 val requestedId = call.parameters["videoId"]!!
-                // RADIO: the app asks for songs related to the CURRENT track,
-                // which may be a surrogate iTunes id ("it:12345") when it came
-                // from search. Resolve it to the real YouTube video first so
-                // NewPipeExtractor always gets a real id.
+                // RADIO: search ids are already real videoIds; legacy `it:`
+                // ids resolve via the match store first.
                 val realVideoId = searchOrchestrator.resolveStreamVideoId(requestedId)
                 if (realVideoId == null) {
                     call.respond(HttpStatusCode.NotFound, ErrorResponse("Could not match '$requestedId' to a playable source"))
