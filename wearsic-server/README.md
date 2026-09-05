@@ -66,7 +66,7 @@ Authenticated when `WEARSIC_API_KEY` is set:
 - `GET|POST /api/playlists`
 - `GET /api/playlists/{id}`
 - `POST|DELETE /api/playlists/{id}/tracks[/{videoId}]`
-- `GET /api/playlist?url=` — maximum 10 tracks
+- `GET /api/playlist?url=` — maximum 50 tracks (full albums)
 - `GET /api/search/albums?q=` — album/playlist search (maximum 10 results;
   album `id` is a full playlist URL, feed it to `/api/playlist?url=`)
 - `GET /api/config/youtube-cookie` — returns `{"hasCookie": true|false}`

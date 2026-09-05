@@ -173,9 +173,6 @@ fun FavoritesScreen(
                     onPlay = { onPlayTrack(favoritesState.tracks, index) },
                     onLongPress = { actionTrack = track },
                     onMore = { actionTrack = track },
-                    onDownload = { onDownloadTrack(track) },
-                    onRemove = { onRemoveFavorite(track.id) },
-                    removeDescription = "Remove Favorite",
                     testTagPrefix = "favorite_track"
                 )
             }
@@ -193,7 +190,9 @@ fun FavoritesScreen(
                 onQueue = { onQueue(t) },
                 onDownload = { onDownloadTrack(t) },
                 onAddToPlaylist = { pid -> onAddToPlaylist(pid, t) },
-                onCreatePlaylistAndAdd = { name -> onCreatePlaylistAndAdd(name, t) }
+                onCreatePlaylistAndAdd = { name -> onCreatePlaylistAndAdd(name, t) },
+                onRemove = { onRemoveFavorite(t.id) },
+                removeLabel = "Remove favorite"
             )
         }
     }

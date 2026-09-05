@@ -174,9 +174,6 @@ fun PlaylistDetailScreen(
                     onPlay = { onPlayTrack(detailState.tracks, index) },
                     onLongPress = { actionTrack = track },
                     onMore = { actionTrack = track },
-                    onDownload = { onDownloadTrack(track) },
-                    onRemove = { onRemoveTrack(playlistId, track.id) },
-                    removeDescription = "Remove from Playlist",
                     testTagPrefix = "playlist_track"
                 )
             }
@@ -195,7 +192,9 @@ fun PlaylistDetailScreen(
                 onQueue = { onQueue(t) },
                 onDownload = { onDownloadTrack(t) },
                 onAddToPlaylist = { pid -> onAddToPlaylist(pid, t) },
-                onCreatePlaylistAndAdd = { name -> onCreatePlaylistAndAdd(name, t) }
+                onCreatePlaylistAndAdd = { name -> onCreatePlaylistAndAdd(name, t) },
+                onRemove = { onRemoveTrack(playlistId, t.id) },
+                removeLabel = "Remove from playlist"
             )
         }
     }

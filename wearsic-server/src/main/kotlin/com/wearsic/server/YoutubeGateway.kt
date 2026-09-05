@@ -60,6 +60,10 @@ class YoutubeGateway(
 
     companion object {
         private const val MAX_RESULTS = 10
+        // Albums/playlists: 10 tracks felt like a truncated album on the watch
+        // (most deluxe editions run 15-30 songs). One YouTube playlist page
+        // typically carries ~100 items, so 50 is cheap and covers full albums.
+        private const val MAX_PLAYLIST_TRACKS = 50
         private const val MAX_SUGGESTIONS = 5
         private const val MAX_RELATED_MINUTES = 10
 
@@ -246,7 +250,7 @@ class YoutubeGateway(
                 .filterIsInstance<StreamInfoItem>()
                 .mapNotNull { it.toTrackDtoOrNull() }
                 .distinctBy { it.videoId }
-                .take(MAX_RESULTS)
+                .take(MAX_PLAYLIST_TRACKS)
             PlaylistTracksResponse(id = url, name = extractor.name ?: "Playlist", tracks = tracks)
         }.getOrNull()
         if (result != null) playlistCache.put(url, Timed(result, now + PLAYLIST_TTL_MS))

@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
@@ -51,8 +52,10 @@ import com.example.ui.theme.WearsicTextSecondary
 
 /**
  * Long-press action sheet for any track row (glassmorphism overlay):
- *   ▶ Play now · ＋ Queue · ＋ To Playlist ▸ · ⬇ Download · ✕
+ *   ▶ Play now · ＋ Queue · ＋ To Playlist ▸ · ⬇ Download · 🗑 Remove? · ✕
  * Playlist mode lists server playlists plus "New playlist" (inline name input).
+ * [onRemove] is optional — pass it (e.g. from favorites/playlist detail) to
+ * surface the destructive action here instead of as an inline row button.
  */
 @Composable
 fun WearsicTrackActionSheet(
@@ -64,6 +67,8 @@ fun WearsicTrackActionSheet(
     onDownload: () -> Unit,
     onAddToPlaylist: (String) -> Unit,
     onCreatePlaylistAndAdd: (String) -> Unit,
+    onRemove: (() -> Unit)? = null,
+    removeLabel: String = "Remove",
     modifier: Modifier = Modifier
 ) {
     var mode by remember { mutableStateOf("menu") } // menu | pick | create
@@ -109,6 +114,9 @@ fun WearsicTrackActionSheet(
                     SheetAction(Icons.AutoMirrored.Rounded.QueueMusic, "Queue next") { onDismiss(); onQueue() }
                     SheetAction(Icons.Rounded.Add, "To playlist") { mode = "pick" }
                     SheetAction(Icons.Rounded.Download, "Download") { onDismiss(); onDownload() }
+                    if (onRemove != null) {
+                        SheetAction(Icons.Rounded.Delete, removeLabel) { onDismiss(); onRemove() }
+                    }
                     SheetAction(Icons.Rounded.Close, "Close") { onDismiss() }
                 }
                 "pick" -> {

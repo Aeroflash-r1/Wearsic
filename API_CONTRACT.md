@@ -46,7 +46,7 @@ X-Wearsic-Key: <key>
 - **Response** `200 OK`:
 
 ```json
-{ "status": "ok", "version": "1.5.0", "serverName": "Wearsic Engine", "transcoderAvailable": true }
+{ "status": "ok", "version": "1.5.1", "serverName": "Wearsic Engine", "transcoderAvailable": true }
 ```
 
 Client tolerates missing fields (`status` defaults to `"ok"` when HTTP 200).
@@ -112,7 +112,8 @@ Note: album `id` is a full playlist URL, not a bare id.
 
 - **GET** `/api/playlist?url=<playlist-or-album-url>`
 - **Response**: `{ "id": "...", "name": "...", "tracks": [TrackDto...] }`
-- Max ~10 tracks.
+- Max ~50 tracks (albums frequently run 15-30 songs; the server serves a
+  single YouTube playlist page, so the whole album fits in one response).
 
 ### 8. Favorites
 
