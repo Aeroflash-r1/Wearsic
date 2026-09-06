@@ -21,7 +21,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.AutoAwesome
@@ -32,7 +31,6 @@ import androidx.compose.material.icons.rounded.SdStorage
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -86,8 +84,6 @@ fun SettingsScreen(
     connectionTestState: ConnectionTestState = ConnectionTestState.Idle,
     onServerUrlChanged: (String) -> Unit = {},
     onTestConnection: (String) -> Unit = {},
-    cacheLimitMb: Int = 32,
-    onCacheLimitChanged: (Int) -> Unit = {},
     apiKey: String = "",
     onApiKeyChanged: (String) -> Unit = {},
     onOpenStorage: () -> Unit = {},
@@ -95,18 +91,9 @@ fun SettingsScreen(
     onAutoCacheToggled: (Boolean) -> Unit = {},
     offlineLimitSongs: Int = 15,
     onOfflineLimitChanged: (Int) -> Unit = {},
-    onCleanCache: (onResult: (Long) -> Unit) -> Unit = { onResult -> onResult(0L) },
     onClearDownloads: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val cacheLimits = listOf(16, 32, 64, 128)
-    var currentCacheLimitIndex by remember {
-        val idx = cacheLimits.indexOf(cacheLimitMb)
-        mutableIntStateOf(if (idx >= 0) idx else 1)
-    }
-
-    var cacheCleanedMessage by remember { mutableStateOf<String?>(null) }
-    var isCleaningCache by remember { mutableStateOf(false) }
     var showClearDownloadsConfirm by remember { mutableStateOf(false) }
     var downloadsClearedMessage by remember { mutableStateOf<String?>(null) }
 
@@ -465,56 +452,6 @@ fun SettingsScreen(
                         onOfflineLimitChanged(next)
                     },
                     testTag = "settings_offline_limit"
-                )
-            }
-
-            // Cache Limit Pill
-            item {
-                val currentLimit = cacheLimits[currentCacheLimitIndex]
-                SettingsPillItem(
-                    title = "Cache Limit: ${currentLimit}MB",
-                    subtitle = "Tap to cycle limit",
-                    icon = Icons.Rounded.SdStorage,
-                    onClick = {
-                        val nextIdx = (currentCacheLimitIndex + 1) % cacheLimits.size
-                        currentCacheLimitIndex = nextIdx
-                        onCacheLimitChanged(cacheLimits[nextIdx])
-                    },
-                    testTag = "settings_cache_limit"
-                )
-            }
-
-            // Clean Music Cache Pill
-            item {
-                SettingsPillItem(
-                    title = when {
-                        isCleaningCache -> "Cleaning Cache..."
-                        cacheCleanedMessage != null -> cacheCleanedMessage!!
-                        else -> "Clean Music Cache"
-                    },
-                    subtitle = when {
-                        isCleaningCache -> "Deleting temp streaming files"
-                        cacheCleanedMessage != null -> "Cache cleared"
-                        else -> "Wipe temp streaming cache"
-                    },
-                    icon = Icons.Rounded.CleaningServices,
-                    iconTint = if (cacheCleanedMessage != null) WearsicSuccess else WearsicVibrantLavender,
-                    onClick = {
-                        if (!isCleaningCache) {
-                            isCleaningCache = true
-                            cacheCleanedMessage = null
-                            onCleanCache { freedBytes ->
-                                val freedMb = freedBytes / (1024.0 * 1024.0)
-                                cacheCleanedMessage = if (freedMb > 0) {
-                                    String.format("Cache Cleaned (Freed %.1fMB)", freedMb)
-                                } else {
-                                    "Cache Cleaned (0 MB)"
-                                }
-                                isCleaningCache = false
-                            }
-                        }
-                    },
-                    testTag = "settings_clean_cache"
                 )
             }
 

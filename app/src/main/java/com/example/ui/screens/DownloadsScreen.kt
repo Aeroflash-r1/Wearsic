@@ -151,7 +151,11 @@ fun DownloadsScreen(
                 }
             }
 
-            // Download items
+            // Download items. Only real states render: QUEUED/DOWNLOADING show
+            // progress, FAILED shows retry, COMPLETED shows the playable card.
+            // Anything else (legacy CANCELLED/NOT_DOWNLOADED rows that startup
+            // cleanup reconciles) is skipped so it can never masquerade as a
+            // normal offline download.
             items(downloads, key = { it.trackId }) { item ->
                 when (item.downloadState) {
                     DownloadState.DOWNLOADING.name, DownloadState.QUEUED.name -> {
@@ -167,13 +171,16 @@ fun DownloadsScreen(
                             onDelete = { onDeleteDownload(item.trackId) }
                         )
                     }
-                    else -> {
-                        // Completed or default
+                    DownloadState.COMPLETED.name -> {
                         DownloadedTrackItemCard(
                             entity = item,
                             onPlay = { onPlayTrack(item.toDomainTrack()) },
                             onDelete = { onDeleteDownload(item.trackId) }
                         )
+                    }
+                    else -> {
+                        // Obsolete states (e.g. CANCELLED from old builds) are
+                        // hidden; startup cleanup removes or rescues them.
                     }
                 }
             }

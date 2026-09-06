@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [WearsicDownloadEntity::class, WearsicRecentTrackEntity::class], version = 3, exportSchema = true)
+@Database(entities = [WearsicDownloadEntity::class, WearsicRecentTrackEntity::class], version = 4, exportSchema = true)
 abstract class WearsicDatabase : RoomDatabase() {
 
     abstract fun downloadDao(): DownloadDao
@@ -40,6 +40,14 @@ abstract class WearsicDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Persisted deferred-deletion intent for COMPLETED AUTO rows
+                // whose file was in use when deletion was requested.
+                db.execSQL("ALTER TABLE downloads ADD COLUMN pendingDeletion INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getInstance(context: Context): WearsicDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -47,7 +55,7 @@ abstract class WearsicDatabase : RoomDatabase() {
                     WearsicDatabase::class.java,
                     "wearsic_database.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build().also { INSTANCE = it }
             }
         }

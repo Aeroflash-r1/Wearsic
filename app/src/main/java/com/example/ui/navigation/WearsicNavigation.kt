@@ -53,7 +53,6 @@ fun WearsicApp(
     val playbackState by playerViewModel.uiState.collectAsStateWithLifecycle()
     val searchState by playerViewModel.searchState.collectAsStateWithLifecycle()
     val serverUrl by playerViewModel.serverUrl.collectAsStateWithLifecycle()
-    val cacheLimitMb by playerViewModel.cacheLimitMb.collectAsStateWithLifecycle()
     val connectionTestState by playerViewModel.connectionTestState.collectAsStateWithLifecycle()
     val downloads by playerViewModel.downloads.collectAsStateWithLifecycle()
     val autoCacheEnabled by playerViewModel.autoCacheEnabled.collectAsStateWithLifecycle()
@@ -233,10 +232,6 @@ fun WearsicApp(
                     onTestConnection = { urlToTest ->
                         playerViewModel.testConnection(urlToTest)
                     },
-                    cacheLimitMb = cacheLimitMb,
-                    onCacheLimitChanged = { newLimit ->
-                        playerViewModel.saveCacheLimit(newLimit)
-                    },
                     apiKey = apiKey,
                     onApiKeyChanged = { key ->
                         playerViewModel.setApiKey(key)
@@ -252,9 +247,6 @@ fun WearsicApp(
                     offlineLimitSongs = offlineLimit,
                     onOfflineLimitChanged = { limit ->
                         playerViewModel.saveOfflineLimit(limit)
-                    },
-                    onCleanCache = { onResult ->
-                        playerViewModel.cleanPlaybackCache(onResult)
                     },
                     onClearDownloads = {
                         playerViewModel.clearAllDownloads()
@@ -315,8 +307,6 @@ fun WearsicApp(
                     autoMb = storageStats.autoMb,
                     manualCount = storageStats.manualCount,
                     manualMb = storageStats.manualMb,
-                    streamCacheMb = storageStats.streamCacheMb,
-                    onPurgeStreamCache = { playerViewModel.purgeStreamCache() },
                     onClearAutoCached = { playerViewModel.clearAutoCachedDownloads() }
                 )
             }

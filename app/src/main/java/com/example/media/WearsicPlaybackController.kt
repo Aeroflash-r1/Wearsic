@@ -12,6 +12,7 @@ import com.example.model.PlaybackUiState
 import com.example.model.Track
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -50,6 +51,21 @@ class WearsicPlaybackController(private val context: Context) {
         private const val PREVIOUS_DOUBLE_TAP_WINDOW_MS = 1500L
     }
 
+    /**
+     * Resolved when the controller has either connected to the media session
+     * (true — its current track, if any, is then reflected in [uiState]) or
+     * definitively failed to connect / was released (false). Storage code uses
+     * this to know when playback state is trustworthy before touching files.
+     */
+    private val initialConnectionKnown = CompletableDeferred<Boolean>()
+
+    /**
+     * Suspends until the session connection outcome is known (see
+     * [initialConnectionKnown]). On true, [uiState] reflects the real player;
+     * on false nothing is (or will be) playing through this controller.
+     */
+    suspend fun awaitInitialConnection(): Boolean = initialConnectionKnown.await()
+
     private val _uiState = MutableStateFlow(
         PlaybackUiState(
             playlist = emptyList()
@@ -76,8 +92,8 @@ class WearsicPlaybackController(private val context: Context) {
                 error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
 
             if (isTransient && playbackRetryAttempts < MAX_PLAYBACK_RETRIES) {
-                // Tunnel connections drop mid-stream: retry and let the
-                // CacheDataSource resume from the bytes already buffered.
+                // Tunnel connections drop mid-stream: retry and let ExoPlayer
+                // resume from the bytes already held in its memory buffer.
                 playbackRetryAttempts++
                 val attempt = playbackRetryAttempts
                 _uiState.update { it.copy(isBuffering = true) }
@@ -126,6 +142,7 @@ class WearsicPlaybackController(private val context: Context) {
 
         if (android.os.Build.FINGERPRINT == "robolectric" || android.os.Build.HARDWARE == "robolectric") {
             // In Robolectric test environments, Media3 SessionService connection lacks a live OS binder
+            initialConnectionKnown.complete(false)
             return
         }
 
@@ -153,6 +170,7 @@ class WearsicPlaybackController(private val context: Context) {
                             pendingPlay = null
                             playTracks(tracks, startIndex)
                         }
+                        initialConnectionKnown.complete(true)
                     } catch (e: Exception) {
                         _uiState.update { it.copy(playbackError = "Could not connect to media service") }
                         scheduleReconnect()
@@ -167,7 +185,12 @@ class WearsicPlaybackController(private val context: Context) {
     }
 
     private fun scheduleReconnect() {
-        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) return
+        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+            // No more attempts: the connection outcome is final (nothing is or
+            // will be playing through this controller).
+            initialConnectionKnown.complete(false)
+            return
+        }
         reconnectAttempts++
         scope.launch {
             delay(1000L * reconnectAttempts)
@@ -570,6 +593,7 @@ class WearsicPlaybackController(private val context: Context) {
     }
 
     fun release() {
+        initialConnectionKnown.complete(false)
         stopPositionTracker()
         try {
             scope.cancel()

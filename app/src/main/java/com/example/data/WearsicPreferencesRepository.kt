@@ -23,14 +23,12 @@ class WearsicPreferencesRepository(private val context: Context) {
 
     companion object {
         val KEY_SERVER_URL = stringPreferencesKey("server_url")
-        val KEY_CACHE_LIMIT = intPreferencesKey("cache_limit_mb")
         val KEY_AUTO_CACHE_ENABLED = booleanPreferencesKey("auto_cache_enabled")
         val KEY_API_KEY = stringPreferencesKey("api_key")
         val KEY_HIDDEN_PLAYLISTS = stringSetPreferencesKey("hidden_playlists")
         val KEY_OFFLINE_LIMIT = intPreferencesKey("offline_song_limit")
         /** No server is preconfigured; users enter their own URL in Settings. */
         const val DEFAULT_SERVER_URL = ""
-        const val DEFAULT_CACHE_LIMIT = 32
         const val DEFAULT_OFFLINE_LIMIT = 15
     }
 
@@ -42,24 +40,10 @@ class WearsicPreferencesRepository(private val context: Context) {
             preferences[KEY_SERVER_URL] ?: DEFAULT_SERVER_URL
         }
 
-    val cacheLimitFlow: Flow<Int> = context.dataStore.data
-        .catch { exception ->
-            emit(emptyPreferences())
-        }
-        .map { preferences ->
-            preferences[KEY_CACHE_LIMIT] ?: DEFAULT_CACHE_LIMIT
-        }
-
     suspend fun saveServerUrl(url: String) {
         val cleanUrl = url.trim().trimEnd('/')
         context.dataStore.edit { preferences ->
             preferences[KEY_SERVER_URL] = cleanUrl
-        }
-    }
-
-    suspend fun saveCacheLimit(limitMb: Int) {
-        context.dataStore.edit { preferences ->
-            preferences[KEY_CACHE_LIMIT] = limitMb
         }
     }
 

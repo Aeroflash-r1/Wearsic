@@ -30,7 +30,15 @@ data class WearsicDownloadEntity(
     val errorMessage: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "0")
-    val autoCached: Boolean = false
+    val autoCached: Boolean = false,
+    /**
+     * TRUE only for a COMPLETED AUTO row whose deletion was REQUESTED while
+     * its file was in use by playback (or racing a MANUAL promotion). The row
+     * and file stay until the deletion is retried safely; persisted so the
+     * intent survives process death. Never set for MANUAL rows.
+     */
+    @ColumnInfo(defaultValue = "0")
+    val pendingDeletion: Boolean = false
     ) {
     fun toDomainTrack(): Track {
         return Track(

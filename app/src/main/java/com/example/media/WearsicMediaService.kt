@@ -12,7 +12,6 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.example.MainActivity
-import com.example.media.cache.WearsicPlaybackCacheManager
 
 class WearsicMediaService : MediaSessionService() {
 
@@ -22,6 +21,12 @@ class WearsicMediaService : MediaSessionService() {
     @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
+
+        // One-time migration from the old persistent stream cache: no playback
+        // path writes to it anymore, so wipe any leftover directory (pure dead
+        // storage duplicating completed downloads). Runs here — after the old
+        // service instance (and its cache handles) has been released.
+        WearsicStreamDataSource.deleteLegacyStreamCache(this)
 
         // Media3's default media notification uses a system-managed playback
         // channel; no manual channel needed (and a manual one would leave
@@ -33,15 +38,18 @@ class WearsicMediaService : MediaSessionService() {
             .setUsage(C.USAGE_MEDIA)
             .build()
 
-        // 2. Build MediaSourceFactory with Media3 Caching
-        val cacheDataSourceFactory = WearsicPlaybackCacheManager.buildCacheDataSourceFactory(this)
-        val mediaSourceFactory = DefaultMediaSourceFactory(cacheDataSourceFactory)
+        // 2. Build the MediaSourceFactory. NO persistent disk cache: playback
+        //    buffers in memory only, and the sole permanent local copy of a
+        //    song is the single Auto/Manual download file. Online streaming,
+        //    seeking and local-file playback all resolve through
+        //    DefaultDataSource (OkHttp upstream for http(s), platform file
+        //    providers for file:// and android.resource:// URIs).
+        val mediaSourceFactory = DefaultMediaSourceFactory(
+            WearsicStreamDataSource.createDataSourceFactory(this)
+        )
 
-        // 3. Buffer policy: keep only a play-ahead window (~1 min) in the
-        //    stream cache. The "guaranteed offline" layer is the Auto-Cache
-        //    downloader (each played song is saved as a real file), so pulling
-        //    the WHOLE song through the cache too made every song exist twice
-        //    on disk and cost 2x network on first play.
+        // 3. Buffer policy: a modest in-memory window (ExoPlayer memory
+        //    buffering only — nothing is written to disk).
         // bufferForPlaybackMs 1500: start audio after ~1.5s of buffer instead
         // of 2.5s — noticeably faster tap-to-sound over the tunnel. Rebuffer
         // stays conservative (5s) so a mid-song stall still waits properly.

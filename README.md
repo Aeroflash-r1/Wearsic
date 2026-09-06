@@ -18,11 +18,12 @@ Wearsic adopts a clean, modular Model-View-ViewModel (MVVM) architecture with st
 [ WearsicPlaybackController ] <══> [ WearsicMediaService ] (MediaSession, ExoPlayer)
          │                                   │
          ▼                                   ▼
-[ WearsicDownloadManager ]          [ WearsicPlaybackCacheManager ] (32MB LRU Cache, configurable)
-         │                                   │
-         ▼                                   ▼
-[ WearsicDownloadRepository ]       [ Android Filesystem ]
-(Room SQLite, File Storage)        (wearsic_playback_cache / wearsic_downloads)
+[ WearsicDownloadManager ]          [ WearsicStreamDataSource ]
+         │                             (in-memory buffering only —
+         ▼                              NO persistent disk cache)
+[ WearsicDownloadRepository ]              │
+(Room SQLite + ONE file per track   [ ExoPlayer ] (memory window)
+ under wearsic_downloads/)
          │
          ▼
 [ WearsicMusicRepository ] <══> [ WearsicHttpApiClient ]
@@ -42,11 +43,15 @@ Wearsic adopts a clean, modular Model-View-ViewModel (MVVM) architecture with st
 - Backed by Jetpack `DataStore<Preferences>`.
 - **Fault Tolerance**: Read flows include `.catch` blocks to gracefully fall back to safe default settings if preference files are corrupted on the filesystem.
 
-### 4. Downloads & Local Cache (Room Database & OKHttp)
-- **Room SQLite Store**: Keeps track of track state (`QUEUED`, `DOWNLOADING`, `COMPLETED`, `FAILED`, `CANCELLED`).
-- **Isolation**: Downloading stream files are written to `.part` files in `wearsic_downloads` and renamed atomically to `.m4a` upon completion to prevent file truncation. Playback cache uses `wearsic_playback_cache` under cache directories, avoiding conflicts with downloads.
+### 4. Downloads & Local Storage (Room Database & OKHttp)
+- **Room SQLite Store**: Tracks ownership per song — one row per track with a single `autoCached` flag: `true` = AUTO (evictable), `false` = MANUAL (permanent).
+- **ONE physical file per track**: every unique track maps to exactly one completed file (`wearsic_downloads/<trackId>.m4a`); the Room row decides whether it is AUTO or MANUAL — never two files, never two copies of a song.
+- **Isolation**: Downloading bytes are written to `.part` files and atomically renamed to the final `.m4a` only after success; a failed/cancelled download never leaves a `COMPLETED` record.
 - **Storage Protection**: StatFs check verifies that at least 15MB of storage remains free before beginning any download.
-- **One copy per song**: every streamed track is auto-cached (configurable cap, oldest-first eviction; toggle in Settings) and downloading a song purges its streamed copy — a song never exists twice on disk. Explicit downloads are permanent and never auto-evicted.
+- **AUTO -> MANUAL promotion is metadata-only**: pressing Download on an auto-cached song flips the flag and reuses the same file — 0 new bytes, no re-download. A Download press during an in-flight AUTO download upgrades that same job. MANUAL is never downgraded by AutoCache.
+- **No persistent stream cache**: playback buffers in ExoPlayer memory only. AutoCache (45s-listening deferral, 15/50/100-song configurable cap, oldest-first eviction that never touches MANUAL) is the sole way songs land on disk.
+- **Playback-safe deletion**: eviction, Clear auto-saved and individual deletes never cut the AUTO file ExoPlayer currently has open. That file's deletion is DEFERRED and persisted on the Room row (`pendingDeletion` flag, DB v4) — so the intent survives process death and a restart deterministically rediscovers it — then retried automatically once playback releases the file (track change, queue clear, or after startup once the session state is known). A playing song therefore temporarily survives cleanup but never bypasses the 15/50/100 cap forever, and a MANUAL download request racing a deletion always wins (promotion intent is recorded synchronously before any delete can run).
+- **Startup reconciliation**: rows left `QUEUED`/`DOWNLOADING` by a killed process are removed (with their orphaned `.part` bytes); legacy `CANCELLED` rows are rescued to `COMPLETED` when a real file exists behind them (ownership preserved) or removed when dead — never touching valid AUTO/MANUAL downloads; legacy `wearsic_playback_cache` directories from older builds are wiped once. All idempotent.
 
 ---
 
@@ -60,7 +65,7 @@ This client is fully hardened to support any standard Ktor/OkHttp endpoint follo
 ```json
 {
   "status": "ok",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "serverName": "Wearsic Engine",
   "transcoderAvailable": true,
   "extraction": { "successCount": 42, "failureCount": 1, "failureRatePercent": 2, "consecutiveFailures": 0, "lastError": null },
@@ -102,7 +107,7 @@ This client is fully hardened to support any standard Ktor/OkHttp endpoint follo
 - Throttles connection testing by locking and skipping execution if `ConnectionTestState.Testing` is active.
 - Throttles search queries by canceling previous active search coroutines `searchJob?.cancel()`.
 - Throttles progress reporting during downloads (every 10% or 500ms) to reduce watch CPU and UI rendering overhead.
-- Ignores duplicate track download requests if a download job for that track ID is already active.
+- Ignores duplicate track download requests if a download job for that track ID is already active, and upgrades the SAME job when a MANUAL request lands on an in-flight AUTO download (no second HTTP request).
 
 ### 3. Clean Error Translation
 - Translates raw networking/Media3 exceptions into short, actionable, Wear OS-friendly errors (e.g., "Server connection timed out.", "Host not resolved. Check URL or internet.", "Storage full (<15MB free)").
@@ -178,5 +183,5 @@ keytool -genkeypair -v -keystore my-upload-key.jks -alias upload \
 Then cut a release:
 
 ```bash
-git tag v1.7.0 && git push origin v1.7.0
+git tag v1.8.0 && git push origin v1.8.0
 ```

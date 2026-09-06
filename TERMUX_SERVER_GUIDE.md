@@ -55,7 +55,7 @@ Or, if you already know the release tag (e.g. `v1.5.0`):
 
 ```bash
 curl -L -o ~/wearsic-server-termux.zip \
-  "https://github.com/Aeroflash-r1/wearsic/releases/latest/download/wearsic-server-termux-v1.7.0.zip"
+  "https://github.com/Aeroflash-r1/wearsic/releases/latest/download/wearsic-server-termux-v1.8.0.zip"
 ```
 
 ### Option B — copy from somewhere else
@@ -113,7 +113,7 @@ curl http://127.0.0.1:8080/health
 Expected response:
 
 ```json
-{"status":"ok","version":"1.7.0","serverName":"Wearsic Engine","transcoderAvailable":true}
+{"status":"ok","version":"1.8.0","serverName":"Wearsic Engine","transcoderAvailable":true}
 ```
 
 (The exact `version` value depends on the release you installed — it always

@@ -20,7 +20,6 @@ import com.example.data.WearsicPreferencesRepository
 import com.example.data.db.DownloadState
 import com.example.media.AudioOutputHelper
 import com.example.media.WearsicMediaItemFactory
-import com.example.media.cache.WearsicPlaybackCacheManager
 import com.example.model.Track
 import com.example.network.WearsicMockApiClient
 import com.example.network.model.ConnectionTestState
@@ -169,17 +168,6 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun testPlaybackCacheOperations() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val cacheDir = WearsicPlaybackCacheManager.getCacheDir(context)
-        assertTrue(cacheDir.exists())
-
-        // Test clearing cache
-        val freedBytes = WearsicPlaybackCacheManager.cleanCache(context)
-        assertTrue(freedBytes >= 0L)
-    }
-
-    @Test
     fun testLibraryAndSearchNavigation() {
         composeTestRule.setContent {
             WearsicTheme {
@@ -230,15 +218,16 @@ class ExampleRobolectricTest {
         // Test server URL and cache limit UI elements
         composeTestRule.onNodeWithTag("settings_server_url", useUnmergedTree = true).assertExists()
 
-        // The Offline Audio section sits between the URL field and the cache
-        // limit pill; scroll down so the lower pills enter the lazy viewport.
+        // The Offline Audio section sits below the URL field; scroll down so
+        // the limit pills enter the lazy viewport. There is no persistent
+        // stream-cache limit anymore — playback buffers in memory only.
         repeat(2) {
             composeTestRule.onRoot().performTouchInput { swipeUp() }
             composeTestRule.waitForIdle()
         }
 
         composeTestRule.onNodeWithTag("settings_offline_limit", useUnmergedTree = true).assertExists()
-        composeTestRule.onNodeWithTag("settings_cache_limit", useUnmergedTree = true).assertExists()
+        composeTestRule.onNodeWithTag("settings_cache_limit", useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test

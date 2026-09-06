@@ -8,8 +8,9 @@ import okhttp3.Response
 /**
  * Process-wide shared OkHttpClient. Every consumer derives from this base via
  * [OkHttpClient.newBuilder], so connection pools, dispatchers and sockets are
- * reused across the API client, downloader, stream cache and warm-up requests
- * instead of each holding a private pool (wasteful on a watch).
+ * reused across the API client, downloader, media-stream playback and
+ * warm-up requests instead of each holding a private pool (wasteful on a
+ * watch).
  *
  * The optional [apiKey] is injected here — centrally — so EVERY request that
  * leaves the app carries `X-Wearsic-Key` when one is configured. This must

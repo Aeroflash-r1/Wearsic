@@ -31,8 +31,13 @@ class WearsicDownloadRepository(
         return downloadDao.getDownloadFlowById(trackId)
     }
 
+    /** Raw row (any state) — single source of truth for ownership decisions. */
+    suspend fun getDownloadEntity(trackId: String): WearsicDownloadEntity? {
+        return downloadDao.getDownloadById(trackId)
+    }
+
     suspend fun getDownloadedTrack(trackId: String): Track? {
-        val entity = downloadDao.getDownloadById(trackId) ?: return null
+        val entity = getDownloadEntity(trackId) ?: return null
         if (entity.downloadState == DownloadState.COMPLETED.name) {
             val file = File(entity.localFilePath)
             if (file.exists() && file.length() > 0) {
@@ -44,6 +49,26 @@ class WearsicDownloadRepository(
 
     suspend fun isTrackDownloaded(trackId: String): Boolean {
         return getDownloadedTrack(trackId) != null
+    }
+
+    /** Rows whose job died with the process (QUEUED/DOWNLOADING, no live job). */
+    suspend fun getIncompleteDownloads(): List<WearsicDownloadEntity> {
+        return downloadDao.getIncompleteDownloads()
+    }
+
+    /** Legacy rows from builds whose cancel path left the row behind. */
+    suspend fun getCancelledDownloads(): List<WearsicDownloadEntity> {
+        return downloadDao.getCancelledDownloads()
+    }
+
+    /** Completed AUTO rows whose deletion was deferred (file in use / promotion). */
+    suspend fun getPendingDeletionDownloads(): List<WearsicDownloadEntity> {
+        return downloadDao.getPendingDeletionDownloads()
+    }
+
+    /** Records or clears the persisted deferred-deletion intent for a row. */
+    suspend fun markDeletionPending(trackId: String, pending: Boolean) {
+        downloadDao.markDeletionPending(trackId, pending)
     }
 
     suspend fun recordQueued(track: Track, localFilePath: String, autoCached: Boolean = false) {
@@ -78,13 +103,17 @@ class WearsicDownloadRepository(
         )
     }
 
-    suspend fun markCompleted(trackId: String, sizeBytes: Long) {
-        downloadDao.updateProgress(
-            trackId = trackId,
-            progress = 100,
-            state = DownloadState.COMPLETED.name,
-            fileSizeBytes = sizeBytes
-        )
+    /**
+     * Marks the download COMPLETED and records its final ownership in the
+     * same write. Only called AFTER the completed file exists on disk.
+     */
+    suspend fun markCompleted(trackId: String, sizeBytes: Long, autoCached: Boolean = false) {
+        downloadDao.markCompleted(trackId, sizeBytes, autoCached)
+    }
+
+    /** AUTO -> MANUAL promotion: ownership flip only, the file is untouched. */
+    suspend fun updateOwnership(trackId: String, autoCached: Boolean) {
+        downloadDao.updateOwnership(trackId, autoCached)
     }
 
     suspend fun markFailed(trackId: String, error: String) {
@@ -92,14 +121,6 @@ class WearsicDownloadRepository(
             trackId = trackId,
             state = DownloadState.FAILED.name,
             errorMessage = error
-        )
-    }
-
-    suspend fun markCancelled(trackId: String) {
-        downloadDao.updateState(
-            trackId = trackId,
-            state = DownloadState.CANCELLED.name,
-            errorMessage = "Download cancelled"
         )
     }
 
@@ -128,4 +149,35 @@ class WearsicDownloadRepository(
         }
         downloadDao.deleteAll()
     }
+
+    /**
+     * Storage accounting for the UI: physical bytes of COMPLETED files that
+     * actually exist, partitioned by ownership. Every file appears exactly
+     * once (auto XOR manual), so total = auto + manual with no double-count.
+     */
+    suspend fun computeLocalStorageBreakdown(): LocalStorageBreakdown {
+        var autoCount = 0
+        var autoBytes = 0L
+        var manualCount = 0
+        var manualBytes = 0L
+        for (entity in downloadDao.getCompletedDownloads()) {
+            val file = File(entity.localFilePath)
+            if (!file.isFile || file.length() <= 0L) continue
+            if (entity.autoCached) {
+                autoCount++
+                autoBytes += file.length()
+            } else {
+                manualCount++
+                manualBytes += file.length()
+            }
+        }
+        return LocalStorageBreakdown(autoCount, autoBytes, manualCount, manualBytes)
+    }
 }
+
+data class LocalStorageBreakdown(
+    val autoCount: Int = 0,
+    val autoBytes: Long = 0L,
+    val manualCount: Int = 0,
+    val manualBytes: Long = 0L
+)

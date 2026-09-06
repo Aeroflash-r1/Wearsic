@@ -46,7 +46,7 @@ X-Wearsic-Key: <key>
 - **Response** `200 OK`:
 
 ```json
-{ "status": "ok", "version": "1.7.0", "serverName": "Wearsic Engine", "transcoderAvailable": true }
+{ "status": "ok", "version": "1.8.0", "serverName": "Wearsic Engine", "transcoderAvailable": true }
 ```
 
 Client tolerates missing fields (`status` defaults to `"ok"` when HTTP 200).

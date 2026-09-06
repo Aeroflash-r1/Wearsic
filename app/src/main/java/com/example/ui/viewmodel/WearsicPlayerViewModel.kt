@@ -13,7 +13,6 @@ import com.example.data.WearsicPreferencesRepository
 import com.example.data.WearsicRecentRepository
 import com.example.data.db.WearsicDownloadEntity
 import com.example.media.WearsicPlaybackController
-import com.example.media.cache.WearsicPlaybackCacheManager
 import androidx.core.net.toUri
 import com.example.media.download.WearsicDownloadManager
 import com.example.model.PlaybackUiState
@@ -68,9 +67,11 @@ data class StorageStats(
     val autoCount: Int = 0,
     val autoMb: Double = 0.0,
     val manualCount: Int = 0,
-    val manualMb: Double = 0.0,
-    val streamCacheMb: Double = 0.0
-)
+    val manualMb: Double = 0.0
+) {
+    /** One file is ever counted once (auto XOR manual), so this sum is exact. */
+    val totalMb: Double get() = autoMb + manualMb
+}
 
 data class ArtistGroup(
     val name: String,
@@ -121,9 +122,6 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
 
     val serverUrl: StateFlow<String> = preferencesRepository.serverUrlFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), WearsicPreferencesRepository.DEFAULT_SERVER_URL)
-
-    val cacheLimitMb: StateFlow<Int> = preferencesRepository.cacheLimitFlow
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), WearsicPreferencesRepository.DEFAULT_CACHE_LIMIT)
 
     val apiKey: StateFlow<String> = preferencesRepository.apiKeyFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
@@ -187,9 +185,13 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), WearsicPreferencesRepository.DEFAULT_OFFLINE_LIMIT)
 
     fun saveOfflineLimit(limitSongs: Int) {
-        downloadManager.maxAutoCachedTracks = limitSongs.coerceIn(5, 200)
+        val clamped = limitSongs.coerceIn(5, 200)
+        downloadManager.maxAutoCachedTracks = clamped
         viewModelScope.launch {
-            preferencesRepository.saveOfflineLimit(limitSongs)
+            preferencesRepository.saveOfflineLimit(clamped)
+            // Lowering the cap (100 -> 15) must evict down immediately; the
+            // download manager only evicts past the cap with this nudge.
+            downloadManager.trimAutoCache()
         }
     }
 
@@ -276,25 +278,60 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
                 downloadManager.maxAutoCachedTracks = limit.coerceIn(5, 200)
             }
         }
-        // No cache setup at startup: the cache limit defaults to 32MB
-        // (configurable in Settings) and the playback cache is built lazily by
-        // the media session. Applying the limit here used to release/rebuild
-        // the SimpleCache while the player was active, which caused IO errors
-        // on slow watches.
+        // A killed process can leave QUEUED/DOWNLOADING rows, orphaned .part
+        // files and legacy CANCELLED rows behind; reconcile them once at
+        // startup (never touches live jobs or valid AUTO/MANUAL downloads).
+        // Safe to run immediately: it never touches COMPLETED rows.
+        viewModelScope.launch {
+            downloadManager.cleanupInterruptedDownloads()
+        }
+        // Deferred deletions persist in the DATABASE (pendingDeletion flag on
+        // COMPLETED AUTO rows), so a restart deterministically redisovers
+        // them. But re-applying the cap / flushing those deletions must wait
+        // until the media session's playback state is KNOWN: on an activity
+        // recreation the old session may still be playing a local AUTO file,
+        // and only after the controller connects does the protection predicate
+        // see it. Once the outcome is known (connected with a real current
+        // track, or definitively nothing playing), processing is safe.
+        viewModelScope.launch {
+            playbackController.awaitInitialConnection()
+            downloadManager.trimAutoCache()
+            downloadManager.flushPendingDeletions()
+        }
+
+        // Auto-eviction / Clear auto-saved / individual deletes must never cut
+        // the file ExoPlayer currently has open as its local source. Pause,
+        // resume and seek do not change this (the same file stays current and
+        // playable); changing track or clearing the queue releases it.
+        downloadManager.isTrackProtected = { trackId ->
+            val current = playbackController.uiState.value.currentTrack
+            current.id == trackId && current.mediaUri.startsWith("/")
+        }
 
         // GUARANTEED offline layer: every song that is actually LISTENED to
         // becomes a real download (subject to the Auto-Cache toggle, network
-        // availability and the auto-cache cap). This replaces reliance on
-        // ExoPlayer's opaque stream cache — listen once and it plays forever
-        // offline. The NEXT queued track is also pre-warmed on the server to
-        // kill extraction delay.
+        // availability and the auto-cache cap). Playback buffers in memory
+        // only — this download is the sole permanent local copy, and listening
+        // once means it plays forever offline. The NEXT queued track is also
+        // pre-warmed on the server to kill extraction delay.
         viewModelScope.launch {
             val autoCachedTrackIds = mutableSetOf<String>()
             var lastTrack: Track? = null
             var trackBecameCurrentAtMs = 0L
+            // Id of the AUTO file playback currently has open locally. When it
+            // changes (next / previous / a remote song / queue cleared) the
+            // previous file is released — flush any deferred deletion of it.
+            var lastLocalProtectedId: String? = null
 
             playbackController.uiState.collect { state ->
                 val track = state.currentTrack
+                val protectedLocalId = track.id.takeIf {
+                    it.isNotBlank() && track.mediaUri.startsWith("/")
+                }
+                if (protectedLocalId != lastLocalProtectedId) {
+                    lastLocalProtectedId = protectedLocalId
+                    downloadManager.flushPendingDeletions()
+                }
                 if (track.id.isNotBlank()) {
                     if (track.id != lastTrack?.id) {
                         lastTrack = track
@@ -432,13 +469,6 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
-    fun saveCacheLimit(limitMb: Int) {
-        viewModelScope.launch {
-            preferencesRepository.saveCacheLimit(limitMb)
-            WearsicPlaybackCacheManager.setCacheLimit(limitMb.toLong() * 1024L * 1024L)
-        }
-    }
-
     fun search(query: String) {
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
@@ -569,39 +599,21 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
 
     fun refreshStorageStats() {
         viewModelScope.launch {
-            val entities = downloadManager.allDownloadsFlow.first().filter { it.isCompleted() }
-            val autoEntities = entities.filter { it.autoCached }
-            val manualEntities = entities.filterNot { it.autoCached }
-            val cacheBytes = withContext(Dispatchers.IO) {
-                WearsicPlaybackCacheManager.getUsedCacheSizeBytes(getApplication<Application>())
+            val breakdown = withContext(Dispatchers.IO) {
+                downloadRepository.computeLocalStorageBreakdown()
             }
             _storageStats.value = StorageStats(
-                autoCount = autoEntities.size,
-                autoMb = autoEntities.sumOf { it.fileSizeBytes } / (1024.0 * 1024.0),
-                manualCount = manualEntities.size,
-                manualMb = manualEntities.sumOf { it.fileSizeBytes } / (1024.0 * 1024.0),
-                streamCacheMb = cacheBytes / (1024.0 * 1024.0)
+                autoCount = breakdown.autoCount,
+                autoMb = breakdown.autoBytes / (1024.0 * 1024.0),
+                manualCount = breakdown.manualCount,
+                manualMb = breakdown.manualBytes / (1024.0 * 1024.0)
             )
         }
     }
 
-    fun purgeStreamCache(onDone: () -> Unit = {}) {
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                WearsicPlaybackCacheManager.cleanCache(getApplication<Application>())
-            }
-            refreshStorageStats()
-            onDone()
-        }
-    }
-
+    /** Deletes ONLY AUTO files/rows; MANUAL downloads and their files survive. */
     fun clearAutoCachedDownloads() {
-        viewModelScope.launch {
-            val ids = downloadManager.allDownloadsFlow.first()
-                .filter { it.isCompleted() && it.autoCached }
-                .map { it.trackId }
-            ids.forEach { deleteDownload(it) }
-        }
+        downloadManager.clearAutoCachedDownloads()
     }
 
     fun toggleHiddenPlaylist(id: String) {
@@ -714,15 +726,6 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
 
     fun clearAllDownloads() {
         downloadManager.clearAllDownloads()
-    }
-
-    fun cleanPlaybackCache(onResult: (Long) -> Unit) {
-        viewModelScope.launch {
-            val freedBytes = withContext(Dispatchers.IO) {
-                WearsicPlaybackCacheManager.cleanCache(getApplication<Application>().applicationContext)
-            }
-            onResult(freedBytes)
-        }
     }
 
     fun togglePlayPause() {

@@ -19,7 +19,6 @@ import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.Delete
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.Text
@@ -33,23 +32,25 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.WearsicScreenHeader
 import com.example.ui.theme.WearsicGlassBorder
-import com.example.ui.theme.WearsicGlassFill
 
+/**
+ * Local-music storage, mathematically consistent with the one-file-per-track
+ * architecture: every physical file belongs to exactly one bucket (AUTO or
+ * MANUAL), so `total local music = auto + manual`. There is no stream-cache
+ * bucket — playback buffers in memory only.
+ */
 @Composable
 fun StorageStatsContent(
     autoCount: Int,
     autoMb: Double,
     manualCount: Int,
     manualMb: Double,
-    streamCacheMb: Double,
-    onPurgeStreamCache: () -> Unit,
     onClearAutoCached: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val maxBar = maxOf(autoMb, manualMb, streamCacheMb, 1.0)
+    val totalMb = autoMb + manualMb
     val lavender = Color(0xFFD0BCFF)
     val purple = Color(0xFF8A5CF6)
-    val deepPurple = Color(0xFF6C5CE7)
 
     ScalingLazyColumn(
         state = rememberScalingLazyListState(),
@@ -61,47 +62,90 @@ fun StorageStatsContent(
         item {
             WearsicScreenHeader(
                 title = "Storage",
-                subtitle = "%.1f MB total".format(autoMb + manualMb + streamCacheMb)
+                subtitle = "Total local music • %.1f MB".format(totalMb)
             )
         }
 
-        items(listOf(
-            Triple("Auto-saved songs", "$autoCount songs • %.1f MB".format(autoMb), autoMb to lavender),
-            Triple("Manual downloads", "$manualCount songs • %.1f MB".format(manualMb), manualMb to purple),
-            Triple("Stream cache", "temporary • %.1f MB".format(streamCacheMb), streamCacheMb to deepPurple)
-        ), key = { it.first }) { (label, countText, pair) ->
-            val (mb, color) = pair
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Text(label, color = Color(0xFFE6E1E5), fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                    Text(countText, color = Color(0xFFCAC4D0), fontSize = 10.sp)
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.08f))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth((mb / maxBar).toFloat().coerceIn(0.02f, 1f))
-                            .height(6.dp)
-                            .clip(CircleShape)
-                            .background(color)
-                    )
-                }
+        item {
+            StatRow(
+                label = "Auto-saved songs",
+                detail = "$autoCount songs • %.1f MB".format(autoMb),
+                mb = autoMb,
+                totalMb = totalMb,
+                color = lavender
+            )
+        }
+        item {
+            StatRow(
+                label = "Manual downloads",
+                detail = "$manualCount songs • %.1f MB".format(manualMb),
+                mb = manualMb,
+                totalMb = totalMb,
+                color = purple
+            )
+        }
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Total local music", color = Color(0xFFE6E1E5), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("%.1f MB".format(totalMb), color = Color(0xFFD0BCFF), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
         }
 
         item {
-            ActionRow(icon = androidx.compose.material.icons.Icons.Rounded.CleaningServices,
-                label = "Purge stream cache", onClick = onPurgeStreamCache)
+            ActionRow(
+                icon = Icons.Rounded.Delete,
+                label = "Clear auto-saved ($autoCount)",
+                onClick = onClearAutoCached
+            )
         }
         item {
-            ActionRow(icon = androidx.compose.material.icons.Icons.Rounded.Delete,
-                label = "Clear auto-saved ($autoCount)", onClick = onClearAutoCached)
+            Text(
+                text = "Manual downloads are kept until you remove them.",
+                color = Color(0xFF8E8A93),
+                fontSize = 9.sp,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatRow(
+    label: String,
+    detail: String,
+    mb: Double,
+    totalMb: Double,
+    color: Color
+) {
+    // Bar = this bucket's share of total local music; full bar when it is all.
+    val fill = if (totalMb > 0.0) (mb / totalMb).toFloat() else 0f
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Text(label, color = Color(0xFFE6E1E5), fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Text(detail, color = Color(0xFFCAC4D0), fontSize = 10.sp)
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.08f))
+        ) {
+            if (fill > 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(fill.coerceIn(0.05f, 1f))
+                        .height(6.dp)
+                        .clip(CircleShape)
+                        .background(color)
+                )
+            }
         }
     }
 }
