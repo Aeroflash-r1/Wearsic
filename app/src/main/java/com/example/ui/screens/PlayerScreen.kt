@@ -11,6 +11,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,7 +40,6 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,7 +58,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -79,14 +78,13 @@ import coil.request.ImageRequest
 import com.example.model.PlaybackUiState
 import com.example.model.Track
 import com.example.ui.theme.WearsicBlack
+import com.example.ui.theme.WearsicLavenderContainer
 import com.example.ui.theme.WearsicSurface
 import com.example.ui.theme.WearsicSurfaceBorder
 import com.example.ui.theme.WearsicTextMuted
 import com.example.ui.theme.WearsicTheme
 import com.example.ui.theme.WearsicVibrantLavender
 import com.example.ui.theme.WearsicViolet
-import kotlinx.coroutines.delay
-import java.time.LocalTime
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
@@ -135,7 +133,10 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(WearsicBlack)
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val safeHorizontal = (maxWidth * 0.12f).coerceIn(14.dp, 22.dp)
+            val safeTop = (maxHeight * 0.11f).coerceIn(16.dp, 24.dp)
+            val safeBottom = (maxHeight * 0.12f).coerceIn(16.dp, 26.dp)
             // ── Backdrop: real album artwork, blurred full-bleed ───────────
             Crossfade(
                 targetState = track.artworkUrl,
@@ -154,8 +155,8 @@ fun PlayerScreen(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .fillMaxSize()
-                            .blur(26.dp)
-                            .scale(1.18f)
+                            .blur(34.dp)
+                            .scale(1.24f)
                     )
                 } else {
                     // No art: deep charcoal backdrop with a soft violet wash.
@@ -181,10 +182,22 @@ fun PlayerScreen(
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            0f to WearsicBlack.copy(alpha = 0.50f),
-                            0.25f to WearsicBlack.copy(alpha = 0.05f),
-                            0.70f to WearsicBlack.copy(alpha = 0.10f),
-                            1f to WearsicBlack.copy(alpha = 0.62f)
+                            0f to WearsicBlack.copy(alpha = 0.72f),
+                            0.25f to WearsicBlack.copy(alpha = 0.38f),
+                            0.70f to WearsicBlack.copy(alpha = 0.44f),
+                            1f to WearsicBlack.copy(alpha = 0.78f)
+                        )
+                    )
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to WearsicViolet.copy(alpha = 0.18f),
+                            0.5f to WearsicVibrantLavender.copy(alpha = 0.08f),
+                            1f to WearsicViolet.copy(alpha = 0.22f)
                         )
                     )
             )
@@ -193,7 +206,12 @@ fun PlayerScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 8.dp)
+                    .padding(
+                        start = safeHorizontal,
+                        end = safeHorizontal,
+                        top = safeTop,
+                        bottom = safeBottom
+                    )
                     .onRotaryScrollEvent { event ->
                         if (event.verticalScrollPixels == 0f) {
                             false
@@ -205,8 +223,20 @@ fun PlayerScreen(
                     },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // 1. Clock
-                LiveClock()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TopActionButton(
+                        icon = Icons.Rounded.MoreVert,
+                        contentDescription = "More actions",
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            showMoreSheet = true
+                        },
+                        testTag = "player_more_button"
+                    )
+                }
 
                 // 2. Metadata + transport (centred middle block)
                 Column(
@@ -216,51 +246,45 @@ fun PlayerScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    // White logo chip + song name / artist (reference layout).
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(WearsicLavenderContainer.copy(alpha = 0.72f))
+                            .border(1.dp, WearsicVibrantLavender.copy(alpha = 0.5f), CircleShape),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(26.dp)
-                                .clip(CircleShape)
-                                .background(Color.White)
-                                .border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.MusicNote,
-                                contentDescription = null,
-                                tint = WearsicViolet,
-                                modifier = Modifier.size(15.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(9.dp))
-                        Column(horizontalAlignment = Alignment.Start) {
-                            Text(
-                                text = if (hasTrack) track.title else "No Active Track",
-                                color = Color.White,
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center
-                            )
-                            Text(
-                                text = if (hasTrack) track.artist else "Play from Library to begin",
-                                color = Color.White.copy(alpha = 0.68f),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Rounded.MusicNote,
+                            contentDescription = null,
+                            tint = WearsicVibrantLavender,
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (hasTrack) track.title else "No Active Track",
+                        color = Color.White,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(0.9f)
+                    )
+                    Text(
+                        text = if (hasTrack) track.artist else "Play from Library to begin",
+                        color = WearsicVibrantLavender.copy(alpha = 0.84f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(0.85f)
+                    )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                    // Transport: pale skip circles + pale wavy progress blob.
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
@@ -271,7 +295,7 @@ fun PlayerScreen(
                             onClick = onSkipPrevious,
                             testTag = "player_previous_button"
                         )
-                        Spacer(modifier = Modifier.width(9.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
                         WavyPlayBlob(
                             isPlaying = playbackState.isPlaying,
                             isBuffering = playbackState.isBuffering,
@@ -283,7 +307,7 @@ fun PlayerScreen(
                             },
                             onTogglePlayPause = onTogglePlayPause
                         )
-                        Spacer(modifier = Modifier.width(9.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
                         PaleRoundButton(
                             icon = Icons.Rounded.SkipNext,
                             contentDescription = "Next Track",
@@ -293,15 +317,13 @@ fun PlayerScreen(
                     }
                 }
 
-                // 3. Bottom capsules — output (left, wider) + ⋮ More (right).
+                // 3. Bottom output capsule.
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 6.dp),
+                        .fillMaxWidth(0.84f),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(9.dp, Alignment.CenterHorizontally)
+                    horizontalArrangement = Arrangement.Center
                 ) {
-                    // Pale pill with the two overlapping output glyphs.
                     val outputPressed = remember { MutableInteractionSource() }
                     val outputPressedState by outputPressed.collectIsPressedAsState()
                     val outputScale by animateFloatAsState(
@@ -313,14 +335,15 @@ fun PlayerScreen(
                     // speaker-with-wave badge overlapping it on the right.
                     Box(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(42.dp)
+                            .height(40.dp)
+                            .fillMaxWidth()
                             .graphicsLayer {
                                 scaleX = outputScale
                                 scaleY = outputScale
                             }
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(PaleControl)
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(WearsicLavenderContainer.copy(alpha = 0.78f))
+                            .border(1.dp, WearsicVibrantLavender.copy(alpha = 0.45f), RoundedCornerShape(22.dp))
                             .clickable(interactionSource = outputPressed, indication = null) {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 onNavigateToVolume()
@@ -331,49 +354,17 @@ fun PlayerScreen(
                         Icon(
                             imageVector = Icons.Rounded.Headphones,
                             contentDescription = "Audio Output",
-                            tint = Color.White,
+                            tint = WearsicVibrantLavender,
                             modifier = Modifier.size(19.dp)
                         )
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.VolumeUp,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = WearsicVibrantLavender,
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .offset(x = 8.dp, y = 7.dp)
-                                .size(11.dp)
-                        )
-                    }
-
-                    // ⋮ More capsule.
-                    val morePressed = remember { MutableInteractionSource() }
-                    val morePressedState by morePressed.collectIsPressedAsState()
-                    val moreScale by animateFloatAsState(
-                        targetValue = if (morePressedState) 0.94f else 1f,
-                        animationSpec = tween(durationMillis = 80),
-                        label = "moreCapsule"
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(width = 52.dp, height = 42.dp)
-                            .graphicsLayer {
-                                scaleX = moreScale
-                                scaleY = moreScale
-                            }
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(PaleControl)
-                            .clickable(interactionSource = morePressed, indication = null) {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                showMoreSheet = true
-                            }
-                            .testTag("player_more_button"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.MoreVert,
-                            contentDescription = "More actions",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
+                                .size(12.dp)
                         )
                     }
                 }
@@ -405,30 +396,6 @@ fun PlayerScreen(
             }
         }
     }
-}
-
-/** Solid pale surface + black glyphs — the reference's control colour. */
-private val PaleControl = Color(0xFFDEE4E0)
-
-/** Live clock — the reference's 9:30, updated silently every minute. */
-@Composable
-private fun LiveClock() {
-    var text by remember { mutableStateOf(formatClock()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(10_000)
-            val fresh = formatClock()
-            if (fresh != text) text = fresh
-        }
-    }
-    Text(
-        text = text,
-        color = Color.White,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Medium,
-        textAlign = TextAlign.Center,
-        modifier = Modifier.padding(top = 2.dp)
-    )
 }
 
 /**
@@ -485,8 +452,15 @@ private fun WavyPlayBlob(
             }
             path.close()
 
-            // Solid pale fill.
-            drawPath(path = path, color = PaleControl)
+            // Violet/lavender fill.
+            drawPath(
+                path = path,
+                brush = Brush.radialGradient(
+                    colors = listOf(WearsicVibrantLavender, WearsicViolet),
+                    center = center,
+                    radius = size.minDimension * 0.8f
+                )
+            )
 
             // Thin base outline + violet progress sweep around the lobes.
             val outline = Stroke(width = strokeW, cap = StrokeCap.Round)
@@ -504,7 +478,7 @@ private fun WavyPlayBlob(
                     measure.getSegment(0f, total * progress, trace, true)
                     drawPath(
                         path = trace,
-                        color = WearsicVibrantLavender,
+                        color = Color.White.copy(alpha = 0.92f),
                         style = Stroke(width = strokeW + 0.5f, cap = StrokeCap.Round)
                     )
                 }
@@ -518,13 +492,13 @@ private fun WavyPlayBlob(
                 else -> Icons.Rounded.PlayArrow
             },
             contentDescription = if (isPlaying) "Pause" else "Play",
-            tint = Color.Black,
+            tint = WearsicBlack,
             modifier = Modifier.size(26.dp)
         )
     }
 }
 
-/** Solid pale circle button with a black glyph (skip back / skip forward). */
+/** Secondary round transport button. */
 @Composable
 private fun PaleRoundButton(
     icon: ImageVector,
@@ -543,13 +517,14 @@ private fun PaleRoundButton(
     )
     Box(
         modifier = modifier
-            .size(50.dp)
+            .size(48.dp)
             .graphicsLayer {
                 scaleX = pressScale
                 scaleY = pressScale
             }
             .clip(CircleShape)
-            .background(PaleControl)
+            .background(WearsicLavenderContainer.copy(alpha = 0.78f))
+            .border(1.dp, WearsicVibrantLavender.copy(alpha = 0.5f), CircleShape)
             .clickable(interactionSource = interaction, indication = null) {
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
@@ -560,8 +535,45 @@ private fun PaleRoundButton(
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = Color.Black,
-            modifier = Modifier.size(21.dp)
+            tint = WearsicVibrantLavender,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
+private fun TopActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    testTag: String
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.92f else 1f,
+        animationSpec = tween(durationMillis = 80),
+        label = "topActionPress"
+    )
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
+            .clip(CircleShape)
+            .background(WearsicLavenderContainer.copy(alpha = 0.78f))
+            .border(1.dp, WearsicVibrantLavender.copy(alpha = 0.5f), CircleShape)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .testTag(testTag),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = WearsicVibrantLavender,
+            modifier = Modifier.size(20.dp)
         )
     }
 }
@@ -667,11 +679,6 @@ private fun MoreSheetRow(
             overflow = TextOverflow.Ellipsis
         )
     }
-}
-
-private fun formatClock(): String {
-    val now = LocalTime.now()
-    return String.format("%02d:%02d", now.hour, now.minute)
 }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
