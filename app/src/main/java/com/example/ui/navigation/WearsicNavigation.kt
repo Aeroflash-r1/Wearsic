@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -64,6 +65,7 @@ fun WearsicApp(
     val albumsState by playerViewModel.albumsState.collectAsStateWithLifecycle()
     val artistsState by playerViewModel.artistsState.collectAsStateWithLifecycle()
     val recentTracks by playerViewModel.recentTracks.collectAsStateWithLifecycle()
+    val startupHealth by playerViewModel.startupHealth.collectAsStateWithLifecycle()
     val favoritesState by playerViewModel.favoritesState.collectAsStateWithLifecycle()
     val playlistsState by playerViewModel.playlistsState.collectAsStateWithLifecycle()
     val playlistDetailState by playerViewModel.playlistDetailState.collectAsStateWithLifecycle()
@@ -90,8 +92,12 @@ fun WearsicApp(
         playbackState.isPlaying
     ) { playbackState }
 
-    // Execute actions requested from the system Tile (opens app briefly).
+    // The first committed frame marks the process as having survived cold
+    // start (clears the previous-run crash detector) and records the tile
+    // actions requested from the system Tile (opens app briefly).
+    val appContext = LocalContext.current.applicationContext
     LaunchedEffect(Unit) {
+        com.example.StartupDiagnostics.markUiReady(appContext)
         kotlinx.coroutines.delay(1500)
         MainActivity.pendingTileAction?.let { action ->
             MainActivity.pendingTileAction = null
@@ -250,7 +256,8 @@ fun WearsicApp(
                     },
                     onClearDownloads = {
                         playerViewModel.clearAllDownloads()
-                    }
+                    },
+                    startupHealth = startupHealth
                 )
             }
 

@@ -171,9 +171,9 @@ class RelaunchWithDataTest {
             assertEquals(DownloadState.COMPLETED.name, manual?.downloadState)
             assertTrue(File(manual!!.localFilePath).isFile)
 
-            // Recents are intact (two same-title recordings stay separate).
-            val recents = db(context).recentTrackDao().getRecentTracksFlow().first()
-            assertEquals(2, recents.size)
+            // Recents are intact: both per-recording rows survived the relaunch
+            // (identity rows stay in the DB; the display groups by song name).
+            assertEquals(2, db(context).recentTrackDao().countRows())
         }
 
         // The UI is still responsive after reconciliation: navigation works.

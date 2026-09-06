@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -23,17 +22,22 @@ import java.io.File
 /**
  * REGRESSION — "Recent song plays the WRONG audio".
  *
- * Recents are keyed by the stable recording identity (a real YouTube videoId
- * since the 1.5 YTM migration), NEVER by title/artist. Two different
- * recordings can legitimately share a title + artist and must stay separate
- * rows that each resolve to their OWN stream/local file.
+ * Recents follow a two-layer model:
  *
- * The identity chain under test for every scenario:
+ *  - DATABASE: one row per stable recording identity (a real YouTube videoId
+ *    since the 1.5 YTM migration). Two different recordings that share a
+ *    title+artist keep separate rows — nothing is collapsed or lost.
+ *  - VISIBLE LIST: one row per SONG NAME (title+artist), showing the most
+ *    recently played recording of that song — so replaying a song never
+ *    stacks near-identical rows on the Recents screen.
  *
- *     Recent item id (videoId)
- *         = MediaItem/track id  (entity.toDomainTrack().id)
- *         = stream URL segment  (mediaUri ends in /api/stream/{videoId})
- *         = local file id, when one exists
+ * The invariant this test enforces is that whatever row IS visible resolves
+ * the EXACT recording stored on it — never a title re-search:
+ *
+ *     visible row id (videoId)
+ *         = track/MediaItem id
+ *         = stream URL segment (mediaUri ends in /api/stream/{videoId})
+ *         = local file id, when one exists for THAT id
  *
  * If this test fails, Recent identity was rebuilt from display metadata
  * (title/artist) instead of the exact stored id.
@@ -47,7 +51,7 @@ class RecentPlaybackIdentityTest {
     private lateinit var recents: WearsicRecentRepository
     private lateinit var downloads: WearsicDownloadRepository
 
-    /** Same title AND same artist on purpose — the two recordings must stay distinct. */
+    /** Same title AND same artist on purpose — the recordings must stay distinct. */
     private fun recording(id: String) = Track(
         id = id,
         title = "Test Song",
@@ -76,109 +80,119 @@ class RecentPlaybackIdentityTest {
         db.close()
     }
 
-    private fun recentList(): List<Track> = runBlocking { recents.recentTracksFlow.first() }
+    private fun visibleList(): List<Track> = runBlocking { recents.recentTracksFlow.first() }
+    private fun storedRowCount(): Int = runBlocking { db.recentTrackDao().countRows() }
 
-    // A + B + F: same title/artist, different videoIds -> distinct recordings.
+    // A + B + F: same title/artist, different videoIds. The DB keeps both
+    // recordings; the visible list shows ONE row (the latest play, BBB), and
+    // that row resolves BBB's own stream — never AAA's, never a title search.
     @Test
-    fun `same-title recordings AAA and BBB stay distinct and resolve their own ids`() = runBlocking {
+    fun `same-title recordings stay stored and the visible row resolves its own id`() = runBlocking {
         recents.recordPlayed(recording("AAA"))
         recents.recordPlayed(recording("BBB"))
 
-        val rows = recentList()
-        assertEquals("two recordings, two rows: " + rows.map { it.id }, 2, rows.size)
+        // Identity layer: neither recording was collapsed or lost.
+        assertEquals("both recordings stored", 2, storedRowCount())
 
-        val a = rows.first { it.id == "AAA" }
-        val b = rows.first { it.id == "BBB" }
-        // Click A -> resolves stream segment A, never B's.
-        assertEquals("AAA", a.id)
-        assertEquals("AAA", a.mediaUri.substringAfterLast('/'))
-        assertEquals("AAA", (resolveForPlayback(a) as Track).id)
-        // Click B -> resolves stream segment B, never A's.
-        assertEquals("BBB", b.id)
-        assertEquals("BBB", b.mediaUri.substringAfterLast('/'))
-        assertEquals("BBB", (resolveForPlayback(b) as Track).id)
+        // Display layer: one row per song, showing the latest play (BBB).
+        val rows = visibleList()
+        assertEquals("one visible row per song: " + rows.map { it.id }, 1, rows.size)
+        assertEquals("BBB", rows[0].id)
+        assertEquals("BBB", rows[0].mediaUri.substringAfterLast('/'))
+        // Clicking the visible row resolves BBB's exact recording.
+        assertEquals("BBB", resolveForPlayback(rows[0]).id)
     }
 
-    // C: AAA -> BBB -> AAA replay keeps exact ids through every play.
+    // C: AAA -> BBB -> AAA replay: AAA is visible again and resolves AAA —
+    // replaying a recent song always replays the exact recording.
     @Test
     fun `replaying AAA after BBB always replays recording AAA`() = runBlocking {
         recents.recordPlayed(recording("AAA"))
         recents.recordPlayed(recording("BBB"))
-        recents.recordPlayed(recording("AAA")) // AAA again — the buggy code erased it here
+        recents.recordPlayed(recording("AAA")) // AAA again
 
-        val rows = recentList()
-        assertEquals("both recordings remain after replay: " + rows.map { it.id }, 2, rows.size)
+        assertEquals("both recordings still stored", 2, storedRowCount())
 
         // Top of Recents is AAA again, still pointing at AAA's stream.
+        val rows = visibleList()
+        assertEquals(1, rows.size)
         assertEquals("AAA", rows[0].id)
         assertEquals("https://server.example/api/stream/AAA", rows[0].mediaUri)
-        assertEquals("AAA", rows[0].mediaUri.substringAfterLast('/'))
-        // BBB's row survived untouched.
-        assertEquals("BBB", rows[1].id)
-        assertEquals("BBB", rows[1].mediaUri.substringAfterLast('/'))
+        assertEquals("AAA", resolveForPlayback(rows[0]).id)
     }
 
-    // D: local AUTO file for AAA -> play AAA's exact local file.
+    // D: a local AUTO file for AAA must only ever be used when AAA is the
+    // visible row. When BBB is the latest play it resolves BBB's own stream,
+    // even though an AAA file exists on disk.
     @Test
-    fun `local AUTO file for AAA is played for AAA and never for BBB`() = runBlocking {
+    fun `local AUTO file is used only for its own visible recording`() = runBlocking {
         recents.recordPlayed(recording("AAA"))
-        recents.recordPlayed(recording("BBB"))
+        recents.recordPlayed(recording("BBB")) // BBB latest -> BBB visible
         seedCompletedFile("AAA", autoCached = true)
 
-        val aRow = recentList().first { it.id == "AAA" }
+        // BBB is visible and unaffected by AAA's local file: BBB's stream.
+        val bRow = visibleList().single()
+        assertEquals("BBB", bRow.id)
+        val resolvedB = resolveForPlayback(bRow)
+        assertEquals("BBB", resolvedB.id)
+        assertEquals("https://server.example/api/stream/BBB", resolvedB.mediaUri)
+
+        // Replay AAA -> AAA visible -> AAA's exact local file is played.
+        recents.recordPlayed(recording("AAA"))
+        val aRow = visibleList().single()
+        assertEquals("AAA", aRow.id)
         val resolvedA = resolveForPlayback(aRow)
-        // One local file, owned by AAA's id.
         assertEquals("AAA", resolvedA.id)
         assertTrue("plays the local AUTO file", resolvedA.mediaUri.startsWith("/"))
         assertEquals("AAA.m4a", resolvedA.mediaUri.substringAfterLast('/'))
         assertTrue(File(resolvedA.mediaUri).isFile)
-
-        // BBB is unaffected by AAA's local file: still resolves BBB's stream.
-        val bRow = recentList().first { it.id == "BBB" }
-        val resolvedB = resolveForPlayback(bRow)
-        assertEquals("BBB", resolvedB.id)
-        assertEquals("https://server.example/api/stream/BBB", resolvedB.mediaUri)
     }
 
-    // E: local MANUAL file for BBB -> play BBB's exact local file.
+    // E: symmetric — a local MANUAL file for BBB is used only when BBB is the
+    // visible recording; AAA's row still resolves AAA's own stream.
     @Test
-    fun `local MANUAL file for BBB is played for BBB and never for AAA`() = runBlocking {
+    fun `local MANUAL file is used only for its own visible recording`() = runBlocking {
         recents.recordPlayed(recording("AAA"))
-        recents.recordPlayed(recording("BBB"))
+        recents.recordPlayed(recording("BBB")) // BBB latest -> BBB visible
         seedCompletedFile("BBB", autoCached = false)
 
-        val bRow = recentList().first { it.id == "BBB" }
+        val bRow = visibleList().single()
+        assertEquals("BBB", bRow.id)
         val resolvedB = resolveForPlayback(bRow)
         assertEquals("BBB", resolvedB.id)
         assertTrue("plays the local MANUAL file", resolvedB.mediaUri.startsWith("/"))
         assertEquals("BBB.m4a", resolvedB.mediaUri.substringAfterLast('/'))
         assertTrue(File(resolvedB.mediaUri).isFile)
 
-        val aRow = recentList().first { it.id == "AAA" }
+        // Replay AAA -> AAA visible -> AAA resolves its own stream.
+        recents.recordPlayed(recording("AAA"))
+        val aRow = visibleList().single()
+        assertEquals("AAA", aRow.id)
         val resolvedA = resolveForPlayback(aRow)
         assertEquals("AAA", resolvedA.id)
         assertEquals("https://server.example/api/stream/AAA", resolvedA.mediaUri)
     }
 
-    // G: identity survives an app restart (fresh repository over the same store).
+    // G: identity survives an app restart (fresh repository over the same
+    // store): rows are retained and the visible row keeps its exact id.
     @Test
     fun `exact ids survive restart and still resolve their own recordings`() = runBlocking {
         recents.recordPlayed(recording("AAA"))
         recents.recordPlayed(recording("BBB"))
+        recents.recordPlayed(recording("AAA")) // AAA latest before the restart
 
         // "Restart": brand-new repository instances over the same database.
         val recentsAfterRestart = WearsicRecentRepository(context, recentTrackDao = db.recentTrackDao())
         val downloadsAfterRestart = WearsicDownloadRepository(context, downloadDao = db.downloadDao())
-        val rows = recentsAfterRestart.recentTracksFlow.first()
-        assertEquals(2, rows.size)
 
-        val a = rows.first { it.id == "AAA" }
-        val b = rows.first { it.id == "BBB" }
-        assertEquals("AAA", a.mediaUri.substringAfterLast('/'))
-        assertEquals("BBB", b.mediaUri.substringAfterLast('/'))
-        // Clicking after restart resolves the exact ids (no title search).
-        assertEquals("AAA", (downloadsAfterRestart.getDownloadedTrack(a.id) ?: a).id)
-        assertEquals("BBB", (downloadsAfterRestart.getDownloadedTrack(b.id) ?: b).id)
+        // No rows were lost; the visible row is AAA with its exact stream URL.
+        assertEquals(2, storedRowCount())
+        val rows = recentsAfterRestart.recentTracksFlow.first()
+        assertEquals(1, rows.size)
+        assertEquals("AAA", rows[0].id)
+        assertEquals("https://server.example/api/stream/AAA", rows[0].mediaUri)
+        // Clicking after restart resolves the exact id (no title search).
+        assertEquals("AAA", (downloadsAfterRestart.getDownloadedTrack(rows[0].id) ?: rows[0]).id)
     }
 
     private fun seedCompletedFile(id: String, autoCached: Boolean) {

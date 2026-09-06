@@ -18,5 +18,17 @@
 # WearsicPlaybackController and started from the manifest.
 -keep class com.example.media.WearsicMediaService { <init>(); }
 
-# Serialized/network models are mapped manually via org.json — no reflection,
-# so no keep rules required for com.example.model / com.example.network.model.
+# kotlinx.serialization (com.example.network.model, health, playlist DTOs):
+# reified decodeFromString<T>() passes generated serializers directly, but R8
+# full mode can still strip the generated serializer/companion when a code path
+# is only reached at runtime (e.g. restored sessions on relaunch). Keep the
+# generated serializer classes + annotation metadata so release builds never
+# lose a serializer on any path.
+-keepattributes *Annotation*, InnerClasses, EnclosingMethod
+-keep,includedescriptorclasses class com.example.**$$serializer { *; }
+-keepclassmembers class com.example.** {
+    *** Companion;
+}
+-keepclasseswithmembers class com.example.** {
+    kotlinx.serialization.KSerializer serializer(...);
+}

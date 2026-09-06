@@ -92,6 +92,8 @@ fun SettingsScreen(
     offlineLimitSongs: Int = 15,
     onOfflineLimitChanged: (Int) -> Unit = {},
     onClearDownloads: () -> Unit = {},
+    /** One-line startup health summary (recovery mode / last phase / crash). */
+    startupHealth: String = "",
     modifier: Modifier = Modifier
 ) {
     var showClearDownloadsConfirm by remember { mutableStateOf(false) }
@@ -519,12 +521,19 @@ fun SettingsScreen(
                         fontSize = 10.sp,
                         textAlign = TextAlign.Center
                     )
-                    Text(
-                        text = "Wear OS 6 • Galaxy Watch7",
-                        color = WearsicTextMuted,
-                        fontSize = 9.sp,
-                        textAlign = TextAlign.Center
-                    )
+                    // Diagnostics: only shown when a previous startup crashed
+                    // or stalled, so it is invisible on healthy devices.
+                    if (startupHealth.isNotBlank()) {
+                        Text(
+                            text = startupHealth,
+                            color = WearsicTextMuted.copy(alpha = 0.8f),
+                            fontSize = 8.sp,
+                            textAlign = TextAlign.Center,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
                 }
             }
 

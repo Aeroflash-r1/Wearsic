@@ -1,66 +1,65 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.HourglassEmpty
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
-import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -70,40 +69,43 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
-import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import androidx.wear.tooling.preview.devices.WearDevices
 import androidx.compose.ui.tooling.preview.Preview
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.model.PlaybackUiState
 import com.example.model.Track
-import com.example.ui.components.AmbientBlurTransformation
-import com.example.ui.components.WearsicCircularIconButton
 import com.example.ui.theme.WearsicBlack
-import com.example.ui.theme.WearsicGlassBorder
-import com.example.ui.theme.WearsicGlassFill
-import com.example.ui.theme.WearsicLavenderSubtle
+import com.example.ui.theme.WearsicSurface
+import com.example.ui.theme.WearsicSurfaceBorder
 import com.example.ui.theme.WearsicTextMuted
-import com.example.ui.theme.WearsicTextPrimary
 import com.example.ui.theme.WearsicTheme
 import com.example.ui.theme.WearsicVibrantLavender
-
-import com.example.ui.util.wearsicRotaryScroll
+import com.example.ui.theme.WearsicViolet
 import kotlinx.coroutines.delay
-import kotlin.math.abs
+import java.time.LocalTime
 import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Player screen sized for 44mm round displays (e.g. Galaxy Watch 7).
+ * NOW PLAYING — Wear OS 6 media controls, matched to the reference watch.
  *
- * Signature element: the BLOB PROGRESS POD — an organic scalloped play/pause
- * button whose wavy perimeter is stroked by the playback progress. Centre tap
- * = play/pause; rim taps seek ∓10 s.
+ * Solid pale control pills with black glyphs over the blurred album artwork:
+ *
+ *     9:30 (live clock)
+ *     ◉ logo  Song name
+ *             Artist name
+ *
+ *     (◀)   ~ wavy progress blob ~   (▶)
+ *
+ *     [ 🎧⇉ output ]        [ ⋮ ]
+ *
+ * Wearsic's violet survives only where the reference lets colour speak: the
+ * white logo chip glyph and the progress sweep around the wavy blob.
  */
 @Composable
 fun PlayerScreen(
@@ -122,619 +124,554 @@ fun PlayerScreen(
     downloadProgress: Int = 0,
     modifier: Modifier = Modifier
 ) {
-    val listState = rememberScalingLazyListState()
+    val track = playbackState.currentTrack
+    val hasTrack = track.id.isNotBlank()
+    val haptic = LocalHapticFeedback.current
+
+    var showMoreSheet by remember { mutableStateOf(false) }
 
     ScreenScaffold(
-        timeText = {},
-        scrollState = listState,
         modifier = modifier
             .fillMaxSize()
             .background(WearsicBlack)
     ) {
-        // Ambient artwork glow behind the glass panels — pre-blurred ONCE at
-        // load time (no runtime GPU blur cost).
-        if (!playbackState.currentTrack.artworkUrl.isNullOrBlank()) {
-            val context = LocalContext.current
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(playbackState.currentTrack.artworkUrl)
-                    .size(256)
-                    .transformations(AmbientBlurTransformation())
-                    .build(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                alpha = 0.22f,
-                modifier = Modifier.matchParentSize()
-            )
-        }
+        Box(modifier = Modifier.fillMaxSize()) {
+            // ── Backdrop: real album artwork, blurred full-bleed ───────────
+            Crossfade(
+                targetState = track.artworkUrl,
+                animationSpec = tween(durationMillis = 260),
+                label = "playerBackdrop"
+            ) { artworkUrl ->
+                if (!artworkUrl.isNullOrBlank()) {
+                    val context = LocalContext.current
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(artworkUrl)
+                            .size(720)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .blur(26.dp)
+                            .scale(1.18f)
+                    )
+                } else {
+                    // No art: deep charcoal backdrop with a soft violet wash.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        WearsicVibrantLavender.copy(alpha = 0.12f),
+                                        Color(0xFF141216),
+                                        Color(0xFF0C0B0E)
+                                    )
+                                )
+                            )
+                    )
+                }
+            }
 
-        ScalingLazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .wearsicRotaryScroll(listState),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            item { PlayerHeader(
-                artworkUrl = playbackState.currentTrack.artworkUrl,
-                title = playbackState.currentTrack.title.ifBlank { "No Active Track" },
-                artist = playbackState.currentTrack.artist.ifBlank { "Select from Library" },
-                upNextTitle = playbackState.playlist.getOrNull(playbackState.currentTrackIndex + 1)?.title
-            ) }
-
-            item { TransportRow(
-                positionMs = playbackState.currentPositionMs,
-                durationMs = if (playbackState.currentTrack.id.isNotBlank()) playbackState.durationMs else 0L,
-                isPlaying = playbackState.isPlaying,
-                isBuffering = playbackState.isBuffering,
-                onSkipPrevious = onSkipPrevious,
-                onTogglePlayPause = onTogglePlayPause,
-                onSkipNext = onSkipNext,
-                onSeekForward = onSeekForward,
-                onSeekBack = onSeekBack
-            ) }
-
-            item { SecondaryActionsRow(
-                isBluetoothConnected = playbackState.isBluetoothConnected,
-                isFavorite = playbackState.currentTrack.isFavorite,
-                hasUpNext = playbackState.playlist.size > playbackState.currentTrackIndex + 1,
-                isDownloaded = isDownloaded,
-                isDownloading = isDownloading,
-                onOpenVolume = onNavigateToVolume,
-                onToggleFavorite = onToggleFavorite,
-                onOpenQueue = onNavigateToQueue,
-                onDownload = { onDownloadTrack(playbackState.currentTrack) }
-            ) }
-        }
-    }
-}
-
-/** Artwork-led track header. Only recomposes when the track actually changes. */
-@Composable
-private fun PlayerHeader(
-    artworkUrl: String?,
-    title: String,
-    artist: String,
-    upNextTitle: String?,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier.padding(horizontal = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        if (!artworkUrl.isNullOrBlank()) {
-            val context = LocalContext.current
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(artworkUrl)
-                    // 96.dp @ ~2x watch density ≈ 200px. 512px was 2.5x
-                    // oversized: 4x pixels to decode, 4x RAM, 4x radio on
-                    // cache miss — pure heat for zero visible gain.
-                    .size(256)
-                    .crossfade(false)
-                    .build(),
-                contentDescription = title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(96.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
-            )
-        } else {
+            // Legibility scrim — open in the middle, darker behind text zones.
             Box(
                 modifier = Modifier
-                    .size(96.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(WearsicGlassFill)
-                    .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp)),
-                contentAlignment = Alignment.Center
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to WearsicBlack.copy(alpha = 0.50f),
+                            0.25f to WearsicBlack.copy(alpha = 0.05f),
+                            0.70f to WearsicBlack.copy(alpha = 0.10f),
+                            1f to WearsicBlack.copy(alpha = 0.62f)
+                        )
+                    )
+            )
+
+            // ── Content ────────────────────────────────────────────────────
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 8.dp)
+                    .onRotaryScrollEvent { event ->
+                        if (event.verticalScrollPixels == 0f) {
+                            false
+                        } else {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            if (event.verticalScrollPixels > 0f) onSeekForward() else onSeekBack()
+                            true
+                        }
+                    },
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.Headphones,
-                    contentDescription = "Music",
-                    tint = WearsicVibrantLavender,
-                    modifier = Modifier.size(38.dp)
+                // 1. Clock
+                LiveClock()
+
+                // 2. Metadata + transport (centred middle block)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    // White logo chip + song name / artist (reference layout).
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(26.dp)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                                .border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.MusicNote,
+                                contentDescription = null,
+                                tint = WearsicViolet,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(9.dp))
+                        Column(horizontalAlignment = Alignment.Start) {
+                            Text(
+                                text = if (hasTrack) track.title else "No Active Track",
+                                color = Color.White,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                text = if (hasTrack) track.artist else "Play from Library to begin",
+                                color = Color.White.copy(alpha = 0.68f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Transport: pale skip circles + pale wavy progress blob.
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        PaleRoundButton(
+                            icon = Icons.Rounded.SkipPrevious,
+                            contentDescription = "Previous Track (tap twice)",
+                            onClick = onSkipPrevious,
+                            testTag = "player_previous_button"
+                        )
+                        Spacer(modifier = Modifier.width(9.dp))
+                        WavyPlayBlob(
+                            isPlaying = playbackState.isPlaying,
+                            isBuffering = playbackState.isBuffering,
+                            progress = if (playbackState.durationMs > 0L) {
+                                (playbackState.currentPositionMs.toFloat() / playbackState.durationMs)
+                                    .coerceIn(0f, 1f)
+                            } else {
+                                0f
+                            },
+                            onTogglePlayPause = onTogglePlayPause
+                        )
+                        Spacer(modifier = Modifier.width(9.dp))
+                        PaleRoundButton(
+                            icon = Icons.Rounded.SkipNext,
+                            contentDescription = "Next Track",
+                            onClick = onSkipNext,
+                            testTag = "player_next_button"
+                        )
+                    }
+                }
+
+                // 3. Bottom capsules — output (left, wider) + ⋮ More (right).
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(9.dp, Alignment.CenterHorizontally)
+                ) {
+                    // Pale pill with the two overlapping output glyphs.
+                    val outputPressed = remember { MutableInteractionSource() }
+                    val outputPressedState by outputPressed.collectIsPressedAsState()
+                    val outputScale by animateFloatAsState(
+                        targetValue = if (outputPressedState) 0.94f else 1f,
+                        animationSpec = tween(durationMillis = 80),
+                        label = "outputCapsule"
+                    )
+                    // Reference composite: headphones with a small
+                    // speaker-with-wave badge overlapping it on the right.
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp)
+                            .graphicsLayer {
+                                scaleX = outputScale
+                                scaleY = outputScale
+                            }
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(PaleControl)
+                            .clickable(interactionSource = outputPressed, indication = null) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onNavigateToVolume()
+                            }
+                            .testTag("player_output_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Headphones,
+                            contentDescription = "Audio Output",
+                            tint = Color.White,
+                            modifier = Modifier.size(19.dp)
+                        )
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.VolumeUp,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .offset(x = 8.dp, y = 7.dp)
+                                .size(11.dp)
+                        )
+                    }
+
+                    // ⋮ More capsule.
+                    val morePressed = remember { MutableInteractionSource() }
+                    val morePressedState by morePressed.collectIsPressedAsState()
+                    val moreScale by animateFloatAsState(
+                        targetValue = if (morePressedState) 0.94f else 1f,
+                        animationSpec = tween(durationMillis = 80),
+                        label = "moreCapsule"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(width = 52.dp, height = 42.dp)
+                            .graphicsLayer {
+                                scaleX = moreScale
+                                scaleY = moreScale
+                            }
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(PaleControl)
+                            .clickable(interactionSource = morePressed, indication = null) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                showMoreSheet = true
+                            }
+                            .testTag("player_more_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.MoreVert,
+                            contentDescription = "More actions",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            // ── ⋮ More action sheet ────────────────────────────────────────
+            if (showMoreSheet) {
+                MoreSheet(
+                    isFavorite = track.isFavorite,
+                    isDownloaded = isDownloaded,
+                    isDownloading = isDownloading,
+                    downloadProgress = downloadProgress,
+                    hasTrack = hasTrack,
+                    onDismiss = { showMoreSheet = false },
+                    onToggleFavorite = {
+                        showMoreSheet = false
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onToggleFavorite()
+                    },
+                    onDownload = {
+                        showMoreSheet = false
+                        if (!isDownloaded && !isDownloading) onDownloadTrack(track)
+                    },
+                    onQueue = {
+                        showMoreSheet = false
+                        onNavigateToQueue()
+                    }
                 )
             }
         }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = title,
-            color = WearsicTextPrimary,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            lineHeight = 18.sp
-        )
-
-        Text(
-            text = artist,
-            color = WearsicVibrantLavender,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-
-        if (!upNextTitle.isNullOrBlank()) {
-            Text(
-                text = "Up next: $upNextTitle",
-                color = WearsicTextMuted,
-                fontSize = 9.sp,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
     }
 }
 
-/** Prev / blob pod / next transport controls. */
+/** Solid pale surface + black glyphs — the reference's control colour. */
+private val PaleControl = Color(0xFFDEE4E0)
+
+/** Live clock — the reference's 9:30, updated silently every minute. */
 @Composable
-private fun TransportRow(
-    positionMs: Long,
-    durationMs: Long,
-    isPlaying: Boolean,
-    isBuffering: Boolean,
-    onSkipPrevious: () -> Unit,
-    onTogglePlayPause: () -> Unit,
-    onSkipNext: () -> Unit,
-    onSeekForward: () -> Unit,
-    onSeekBack: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        WearsicCircularIconButton(
-            icon = Icons.Rounded.SkipPrevious,
-            contentDescription = "Previous Track (tap twice)",
-            onClick = onSkipPrevious,
-            size = 40.dp,
-            iconSize = 19.dp,
-            testTag = "player_previous_button"
-        )
-
-        Spacer(modifier = Modifier.width(5.dp))
-
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            BlobProgressPod(
-                positionMs = positionMs,
-                durationMs = durationMs,
-                isPlaying = isPlaying,
-                isBuffering = isBuffering,
-                onTogglePlayPause = onTogglePlayPause,
-                onSeekBack = onSeekBack,
-                onSeekForward = onSeekForward
-            )
-            Spacer(modifier = Modifier.height(3.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = formatMillis(positionMs),
-                    color = WearsicTextMuted,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = "  /  ",
-                    color = WearsicTextMuted.copy(alpha = 0.5f),
-                    fontSize = 10.sp
-                )
-                Text(
-                    text = formatMillis(durationMs),
-                    color = WearsicTextMuted,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
+private fun LiveClock() {
+    var text by remember { mutableStateOf(formatClock()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(10_000)
+            val fresh = formatClock()
+            if (fresh != text) text = fresh
         }
-
-        Spacer(modifier = Modifier.width(5.dp))
-
-        WearsicCircularIconButton(
-            icon = Icons.Rounded.SkipNext,
-            contentDescription = "Next Track",
-            onClick = onSkipNext,
-            size = 40.dp,
-            iconSize = 19.dp,
-            testTag = "player_next_button"
-        )
     }
+    Text(
+        text = text,
+        color = Color.White,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.padding(top = 2.dp)
+    )
 }
 
 /**
- * Generates the organic scalloped-blob outline:
- *     r(θ) = R · (1 + A · sin(k·θ + seed))
- * Sampled densely so lineTo segments render as a smooth wavy stamp shape.
- *
- * When [progressFraction] < 1 the returned path covers only that fraction of
- * the perimeter (starting at θ = -90°, i.e. top), which we stroke as progress.
- */
-private fun blobPath(
-    centerX: Float,
-    centerY: Float,
-    baseRadius: Float,
-    lobeCount: Int,
-    amplitudeRatio: Float,
-    progressFraction: Float = 1f,
-    samples: Int = 180
-): Path {
-    val path = Path()
-    val endT = progressFraction.coerceIn(0.001f, 1f)
-    val drawnSamples = (samples * endT).toInt().coerceAtLeast(2)
-    val startAngle = -Math.PI.toFloat() / 2f   // start from the top
-
-    for (i in 0..drawnSamples) {
-        val t = i.toFloat() / samples.toFloat()
-        val theta = startAngle + t * 2f * Math.PI.toFloat()
-        val r = baseRadius * (1f + amplitudeRatio * sin(theta * lobeCount))
-        val x = centerX + r * cos(theta)
-        val y = centerY + r * sin(theta)
-        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-    }
-    return path
-}
-
-private const val BLOB_LOBES = 7
-private const val BLOB_AMPLITUDE = 0.085f
-
-/**
- * The signature BLOB PROGRESS POD.
- *
- * An organic scalloped stamp-shaped button. Its wavy perimeter doubles as the
- * seek bar: a gradient stroke traces the outline according to playback
- * position. Centre tap = play/pause; rim taps seek ∓10 s. While buffering the
- * whole blob slowly rotates to signal activity (battery-friendly: no idle
- * animation while simply playing).
+ * The scalloped "wavy" play/pause blob — solid pale like the reference, with
+ * a black glyph and a thin outline whose sweep doubles as the progress ring.
  */
 @Composable
-private fun BlobProgressPod(
-    positionMs: Long,
-    durationMs: Long,
+private fun WavyPlayBlob(
     isPlaying: Boolean,
     isBuffering: Boolean,
+    progress: Float,
     onTogglePlayPause: () -> Unit,
-    onSeekBack: () -> Unit,
-    onSeekForward: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
-    val targetProgress = if (durationMs > 0) {
-        (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
-    } else 0f
-
-    // Battery-conscious progress sweep: the position updates once per second,
-    // and animating every tick with an 850ms tween kept the blob redrawing
-    // ~50 frames per second for most of playback. Only real jumps (seeks,
-    // track changes — roughly 2+ seconds of movement) get the smooth sweep;
-    // ordinary per-second ticks snap in a single frame instead.
-    val lastTickTarget = remember { mutableFloatStateOf(targetProgress) }
-    val jumpSeconds = abs(targetProgress - lastTickTarget.floatValue) * durationMs / 1000f
-    LaunchedEffect(targetProgress) { lastTickTarget.floatValue = targetProgress }
-    val smoothProgress by animateFloatAsState(
-        targetValue = targetProgress,
-        animationSpec = tween(durationMillis = if (jumpSeconds >= 2f) 850 else 0),
-        label = "blobFill"
-    )
-
-    // Slow rotation only while buffering (activity cue, zero cost when idle).
-    // 10fps (was 20fps) + 15s auto-cancel: a stuck network no longer spins
-    // the GPU forever and heats the watch — falls back to a static icon.
-    val bufferingSpin = remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(isBuffering) {
-        if (!isBuffering) return@LaunchedEffect
-        var last = System.nanoTime()
-        val deadline = last + 15_000_000_000L
-        while (true) {
-            delay(100)
-            val now = System.nanoTime()
-            if (now > deadline) break
-            bufferingSpin.floatValue += ((now - last) / 1_000_000_000f) * 60f
-            last = now
-        }
-    }
-
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.92f else 1f,
+        animationSpec = tween(durationMillis = 80),
+        label = "blobPress"
+    )
 
     Box(
         modifier = modifier
-            .size(84.dp)
+            .size(64.dp)
             .graphicsLayer {
-                scaleX = if (pressed) 0.93f else 1f
-                scaleY = if (pressed) 0.93f else 1f
+                scaleX = pressScale
+                scaleY = pressScale
             }
-            .pointerInput(Unit) {
-                detectTapGestures { pos ->
-                    val cx = size.width / 2f
-                    val cy = size.height / 2f
-                    val distFromCenter = kotlin.math.hypot(pos.x - cx, pos.y - cy)
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    if (distFromCenter <= size.width * 0.30f) {
-                        onTogglePlayPause()
-                    } else if (pos.x < cx) {
-                        onSeekBack()
-                    } else {
-                        onSeekForward()
-                    }
-                }
+            .clickable(interactionSource = interaction, indication = null) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onTogglePlayPause()
             }
             .testTag("player_play_pause_button"),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.size(78.dp)) {
-            val rotation = if (isBuffering) bufferingSpin.floatValue else 0f
-            rotate(degrees = rotation) {
-                val baseRadius = this.size.minDimension / 2f - 6.dp.toPx()
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            // Equal radii keep the wavy stamp round, not wide.
+            val radius = min(size.width, size.height) * 0.46f
+            val strokeW = 2.dp.toPx()
+            val path = Path()
 
-                // Full wavy outline as the muted track
-                drawBlobStroke(
-                    centerX = this.center.x,
-                    centerY = this.center.y,
-                    baseRadius = baseRadius,
-                    width = 4.dp.toPx(),
-                    color = WearsicGlassBorder,
-                    progressFraction = 1f
-                )
+            // Wavy outline: 8 soft lobes around a rounded blob.
+            val steps = 180
+            val scallops = 8
+            val wave = 0.07f
+            for (i in 0..steps) {
+                val theta = i.toFloat() / steps * 2f * kotlin.math.PI.toFloat()
+                val ripple = 1f + wave * cos(scallops * theta)
+                val x = size.width / 2f + radius * ripple * cos(theta)
+                val y = size.height / 2f + radius * ripple * sin(theta)
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            path.close()
 
-                // Progress stroke tracing the same wavy edge (gradient fill)
-                drawBlobStrokeWithGradient(
-                    centerX = this.center.x,
-                    centerY = this.center.y,
-                    baseRadius = baseRadius,
-                    width = 5.dp.toPx(),
-                    progressFraction = smoothProgress,
-                    colors = listOf(Color(0xFFE8D9FF), WearsicVibrantLavender, Color(0xFF8A5CF6))
-                )
+            // Solid pale fill.
+            drawPath(path = path, color = PaleControl)
 
-                // Frosted glass interior of the blob
-                drawBlobFill(
-                    centerX = this.center.x,
-                    centerY = this.center.y,
-                    baseRadius = baseRadius,
-                    color = WearsicGlassFill
-                )
+            // Thin base outline + violet progress sweep around the lobes.
+            val outline = Stroke(width = strokeW, cap = StrokeCap.Round)
+            drawPath(
+                path = path,
+                color = Color.Black.copy(alpha = 0.16f),
+                style = outline
+            )
+            if (progress > 0f) {
+                val measure = PathMeasure()
+                measure.setPath(path, false)
+                val total = measure.length
+                if (total > 0f) {
+                    val trace = Path()
+                    measure.getSegment(0f, total * progress, trace, true)
+                    drawPath(
+                        path = trace,
+                        color = WearsicVibrantLavender,
+                        style = Stroke(width = strokeW + 0.5f, cap = StrokeCap.Round)
+                    )
+                }
             }
         }
 
-        // Center control icon with a soft scrim so it reads over anything
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.20f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = when {
-                    isBuffering -> Icons.Rounded.HourglassEmpty
-                    isPlaying -> Icons.Rounded.Pause
-                    else -> Icons.Rounded.PlayArrow
-                },
-                contentDescription = if (isPlaying) "Pause" else "Play",
-                tint = Color.White,
-                modifier = Modifier.size(24.dp)
-            )
-        }
-    }
-}
-
-private fun DrawScope.drawBlobStroke(
-    centerX: Float,
-    centerY: Float,
-    baseRadius: Float,
-    width: Float,
-    color: Color,
-    progressFraction: Float
-) {
-    drawPath(
-        path = blobPath(centerX, centerY, baseRadius, BLOB_LOBES, BLOB_AMPLITUDE, progressFraction),
-        color = color,
-        style = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round)
-    )
-}
-
-private fun DrawScope.drawBlobStrokeWithGradient(
-    centerX: Float,
-    centerY: Float,
-    baseRadius: Float,
-    width: Float,
-    progressFraction: Float,
-    colors: List<Color>
-) {
-    drawPath(
-        path = blobPath(centerX, centerY, baseRadius, BLOB_LOBES, BLOB_AMPLITUDE, progressFraction),
-        brush = Brush.linearGradient(colors),
-        style = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round)
-    )
-}
-
-private fun DrawScope.drawBlobFill(
-    centerX: Float,
-    centerY: Float,
-    baseRadius: Float,
-    color: Color
-) {
-    drawPath(
-        path = blobPath(centerX, centerY, baseRadius, BLOB_LOBES, BLOB_AMPLITUDE, 1f),
-        color = color
-    )
-}
-
-/**
- * Uniform circular action buttons in one short centered row.
- */
-@Composable
-private fun SecondaryActionsRow(
-    isBluetoothConnected: Boolean,
-    isFavorite: Boolean,
-    hasUpNext: Boolean,
-    isDownloaded: Boolean,
-    isDownloading: Boolean,
-    onOpenVolume: () -> Unit,
-    onToggleFavorite: () -> Unit,
-    onOpenQueue: () -> Unit,
-    onDownload: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Audio Output / Volume
-        ActionCircle(
-            icon = if (isBluetoothConnected) Icons.Rounded.Headphones else Icons.AutoMirrored.Rounded.VolumeUp,
-            contentDescription = "Audio Output",
-            onClick = onOpenVolume,
-            iconTint = WearsicVibrantLavender,
-            testTag = "player_output_button"
-        )
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        ActionCircle(
-            icon = when {
-                isDownloading -> Icons.Rounded.HourglassEmpty
-                isDownloaded -> Icons.Rounded.CheckCircle
-                else -> Icons.Rounded.Download
+        Icon(
+            imageVector = when {
+                isBuffering -> Icons.Rounded.HourglassEmpty
+                isPlaying -> Icons.Rounded.Pause
+                else -> Icons.Rounded.PlayArrow
             },
-            contentDescription = when {
-                isDownloading -> "Downloading"
-                isDownloaded -> "Downloaded Offline"
-                else -> "Download"
-            },
-            onClick = onDownload,
-            iconTint = if (isDownloaded || isDownloading) WearsicVibrantLavender else WearsicTextMuted,
-            backgroundTint = if (isDownloaded) WearsicLavenderSubtle else Color.Unspecified,
-            borderColor = if (isDownloaded) WearsicVibrantLavender else WearsicGlassBorder,
-            testTag = "player_download_button"
-        )
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        ActionCircle(
-            icon = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-            contentDescription = if (isFavorite) "Favorited" else "Favorite",
-            onClick = onToggleFavorite,
-            iconTint = if (isFavorite) WearsicVibrantLavender else WearsicTextMuted,
-            backgroundTint = if (isFavorite) WearsicLavenderSubtle else Color.Unspecified,
-            borderColor = if (isFavorite) WearsicVibrantLavender else WearsicGlassBorder,
-            testTag = "player_favorite_button",
-            // One-shot pop when the heart flips to favorited.
-            bounceOnTrue = isFavorite
-        )
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        ActionCircle(
-            icon = Icons.AutoMirrored.Rounded.QueueMusic,
-            contentDescription = "Queue",
-            onClick = onOpenQueue,
-            iconTint = if (hasUpNext) WearsicVibrantLavender else WearsicTextMuted,
-            testTag = "player_queue_button"
+            contentDescription = if (isPlaying) "Pause" else "Play",
+            tint = Color.Black,
+            modifier = Modifier.size(26.dp)
         )
     }
 }
 
+/** Solid pale circle button with a black glyph (skip back / skip forward). */
 @Composable
-private fun ActionCircle(
+private fun PaleRoundButton(
     icon: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
-    iconTint: Color,
     modifier: Modifier = Modifier,
-    backgroundTint: Color = Color.Unspecified,
-    borderColor: Color = WearsicGlassBorder,
-    testTag: String = "player_action",
-    bounceOnTrue: Boolean = false
+    testTag: String = "player_skip_button"
 ) {
     val haptic = LocalHapticFeedback.current
-
-    // Press squish: animated so the 48dp touch target stays put while the
-    // 36dp visual circle responds to the finger.
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val pressScale by animateFloatAsState(
-        targetValue = if (pressed) 0.88f else 1f,
-        animationSpec = tween(durationMillis = 90),
-        label = "actionCirclePress"
+        targetValue = if (pressed) 0.90f else 1f,
+        animationSpec = tween(durationMillis = 80),
+        label = "skipPress"
     )
-
-    // One-shot pop (used by the heart): fires only on the false -> true edge,
-    // then settles with a bouncy spring. Discrete 300ms, zero idle cost.
-    val bounce = remember { Animatable(1f) }
-    var lastBounceKey by remember { mutableStateOf(bounceOnTrue) }
-    LaunchedEffect(bounceOnTrue) {
-        if (bounceOnTrue && !lastBounceKey) {
-            bounce.snapTo(1f)
-            bounce.animateTo(1.35f, tween(durationMillis = 90))
-            bounce.animateTo(
-                1f,
-                spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMedium
-                )
-            )
-        }
-        lastBounceKey = bounceOnTrue
-    }
-
     Box(
         modifier = modifier
-            .size(48.dp)
+            .size(50.dp)
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
+            .clip(CircleShape)
+            .background(PaleControl)
             .clickable(interactionSource = interaction, indication = null) {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
             }
             .testTag(testTag),
         contentAlignment = Alignment.Center
     ) {
-        Box(
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = Color.Black,
+            modifier = Modifier.size(21.dp)
+        )
+    }
+}
+
+/** ⋮ More bottom sheet — favourite / download / queue. */
+@Composable
+private fun MoreSheet(
+    isFavorite: Boolean,
+    isDownloaded: Boolean,
+    isDownloading: Boolean,
+    downloadProgress: Int,
+    hasTrack: Boolean,
+    onDismiss: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onDownload: () -> Unit,
+    onQueue: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(WearsicBlack.copy(alpha = 0.55f))
+            .clickable(onClick = onDismiss)
+    ) {
+        Column(
             modifier = Modifier
-                .size(36.dp)
-                .graphicsLayer {
-                    val pulse = if (bounceOnTrue) bounce.value else 1f
-                    scaleX = pressScale * pulse
-                    scaleY = pressScale * pulse
-                }
-                .clip(CircleShape)
-                .background(if (backgroundTint == Color.Unspecified) WearsicGlassFill else backgroundTint)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color.White.copy(alpha = 0.10f), Color.Transparent)
-                    )
-                )
-                .border(1.dp, borderColor, CircleShape),
-            contentAlignment = Alignment.Center
+                .align(Alignment.BottomCenter)
+                .padding(start = 10.dp, end = 10.dp, bottom = 10.dp)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(WearsicSurface)
+                .border(1.dp, WearsicSurfaceBorder, RoundedCornerShape(24.dp))
+                .padding(vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = iconTint,
-                modifier = Modifier.size(17.dp)
+            MoreSheetRow(
+                icon = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                label = if (isFavorite) "Favorited" else "Favorite",
+                tint = if (isFavorite) WearsicVibrantLavender else Color.White.copy(alpha = 0.92f),
+                enabled = hasTrack,
+                onClick = onToggleFavorite,
+                testTag = "player_favorite_button"
+            )
+            MoreSheetRow(
+                icon = when {
+                    isDownloading -> Icons.Rounded.HourglassEmpty
+                    isDownloaded -> Icons.Rounded.CheckCircle
+                    else -> Icons.Rounded.Download
+                },
+                label = when {
+                    isDownloading -> "Downloading… $downloadProgress%"
+                    isDownloaded -> "Downloaded Offline"
+                    else -> "Download"
+                },
+                tint = if (isDownloaded || isDownloading) WearsicVibrantLavender else Color.White.copy(alpha = 0.92f),
+                enabled = hasTrack && !isDownloaded && !isDownloading,
+                onClick = onDownload,
+                testTag = "player_download_button"
+            )
+            MoreSheetRow(
+                icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                label = "Queue",
+                tint = Color.White.copy(alpha = 0.92f),
+                enabled = true,
+                onClick = onQueue,
+                testTag = "player_queue_button"
             )
         }
     }
 }
 
-private fun formatMillis(millis: Long): String {
-    // C.TIME_UNSET (or any non-positive value) = unknown duration: render a
-    // neutral dash instead of a bogus 0:00 countdown.
-    if (millis <= 0L) return "--:--"
-    val totalSeconds = millis / 1000
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return String.format("%d:%02d", minutes, seconds)
+@Composable
+private fun MoreSheetRow(
+    icon: ImageVector,
+    label: String,
+    tint: Color,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    testTag: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(46.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .testTag(testTag)
+            .padding(horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (enabled) tint else WearsicTextMuted,
+            modifier = Modifier.size(21.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = label,
+            color = if (enabled) Color.White.copy(alpha = 0.94f) else WearsicTextMuted,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+private fun formatClock(): String {
+    val now = LocalTime.now()
+    return String.format("%02d:%02d", now.hour, now.minute)
 }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
@@ -745,6 +682,8 @@ fun PlayerScreenPreview() {
             playbackState = PlaybackUiState(
                 currentTrack = Track(id = "1", title = "Weather with You", artist = "Crowded House"),
                 isPlaying = true,
+                durationMs = 240_000L,
+                currentPositionMs = 95_000L,
                 playlist = listOf(
                     Track(id = "1", title = "Weather with You", artist = "Crowded House"),
                     Track(id = "2", title = "Don't Dream It's Over", artist = "Crowded House")

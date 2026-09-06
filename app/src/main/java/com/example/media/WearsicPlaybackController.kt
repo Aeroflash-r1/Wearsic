@@ -8,6 +8,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.example.StartupDiagnostics
 import com.example.model.PlaybackUiState
 import com.example.model.Track
 import com.google.common.util.concurrent.ListenableFuture
@@ -27,7 +28,16 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
-class WearsicPlaybackController(private val context: Context) {
+class WearsicPlaybackController(
+    private val context: Context,
+    /**
+     * Connect to the media session at startup. Startup-recovery mode (the
+     * previous process died during cold start) defers this until the first
+     * playback action so a wedged/broken session can never again hold the UI
+     * hostage on the opening screen; playback commands reconnect on demand.
+     */
+    private val eagerConnect: Boolean = true
+) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var controllerFuture: ListenableFuture<MediaController>? = null
@@ -153,7 +163,15 @@ class WearsicPlaybackController(private val context: Context) {
     }
 
     init {
-        initializeController()
+        StartupDiagnostics.log(context, "controller-init (eager=$eagerConnect)")
+        if (eagerConnect) {
+            initializeController()
+        } else {
+            // Nothing is (or can be) playing through this controller yet —
+            // the old process died with its player. Treat the outcome as
+            // known so startup reconciliation can proceed immediately.
+            initialConnectionKnown.complete(false)
+        }
     }
 
     fun initializeController() {
@@ -175,17 +193,21 @@ class WearsicPlaybackController(private val context: Context) {
                 ComponentName(context, WearsicMediaService::class.java)
             )
 
+            StartupDiagnostics.log(context, "controller-connecting")
             val future = MediaController.Builder(context, sessionToken).buildAsync()
             controllerFuture = future
 
             // Watchdog: if this future never completes (a real Media3
             // failure mode after a session teardown/stale binder), release it
             // and schedule reconnects instead of leaving the app permanently
-            // unconnected with a pending play request.
+            // unconnected with a pending play request. releaseFuture is
+            // non-blocking (cancel + getDone paths only) so this is safe on
+            // the main thread, and the outcome is journaled for diagnostics.
             connectionWatchdogJob?.cancel()
             connectionWatchdogJob = scope.launch {
                 delay(INITIAL_CONNECTION_TIMEOUT_MS)
                 if (controllerFuture === future && mediaController == null) {
+                    StartupDiagnostics.log(context, "controller-connect-watchdog-timeout")
                     runCatching { MediaController.releaseFuture(future) }
                     if (controllerFuture === future) controllerFuture = null
                     // Mark the initial outcome known (false) only the first
@@ -206,6 +228,7 @@ class WearsicPlaybackController(private val context: Context) {
                         controller.addListener(playerListener)
                         updateStateFromPlayer(controller)
                         refreshOutputDevice()
+                        StartupDiagnostics.log(context, "controller-connected")
                         // Flush any play request that arrived while connecting
                         pendingPlay?.let { (tracks, startIndex) ->
                             pendingPlay = null
@@ -214,6 +237,7 @@ class WearsicPlaybackController(private val context: Context) {
                         initialConnectionKnown.complete(true)
                     } catch (e: Exception) {
                         _uiState.update { it.copy(playbackError = "Could not connect to media service") }
+                        StartupDiagnostics.log(context, "controller-connect-failed")
                         scheduleReconnect()
                     }
                 },
@@ -228,7 +252,9 @@ class WearsicPlaybackController(private val context: Context) {
     private fun scheduleReconnect() {
         if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
             // No more attempts: the connection outcome is final (nothing is or
-            // will be playing through this controller).
+            // will be playing through this controller). Playback commands
+            // still reconnect on demand via connect().
+            StartupDiagnostics.log(context, "controller-gave-up-after-$reconnectAttempts")
             initialConnectionKnown.complete(false)
             return
         }

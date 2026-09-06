@@ -12,6 +12,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.example.MainActivity
+import com.example.StartupDiagnostics
 
 class WearsicMediaService : MediaSessionService() {
 
@@ -24,9 +25,14 @@ class WearsicMediaService : MediaSessionService() {
 
         // One-time migration from the old persistent stream cache: no playback
         // path writes to it anymore, so wipe any leftover directory (pure dead
-        // storage duplicating completed downloads). Runs here — after the old
-        // service instance (and its cache handles) has been released.
-        WearsicStreamDataSource.deleteLegacyStreamCache(this)
+        // storage duplicating completed downloads). Runs on a background
+        // thread — a large legacy cache must never block the process's main
+        // thread during service start (main-thread disk IO at cold start is
+        // exactly the kind of stall that shows up as a frozen opening screen).
+        Thread {
+            WearsicStreamDataSource.deleteLegacyStreamCache(this@WearsicMediaService)
+        }.start()
+        StartupDiagnostics.log(this, "media-service-created")
 
         // Media3's default media notification uses a system-managed playback
         // channel; no manual channel needed (and a manual one would leave
@@ -71,18 +77,23 @@ class WearsicMediaService : MediaSessionService() {
     }
 
     /**
-     * Swiping the app away from recents must NOT tear down playback: Wear OS
-     * users expect music to continue with the app closed. The service stays
-     * foregrounded via Media3's media notification while the player has
-     * content; the system keeps the process alive and the session reachable,
-     * so the next app launch connects instantly instead of inheriting a
-     * half-released session (which previously wedged the relaunch). Media3
-     * stops the service on its own once playback is idle/stopped and no
-     * controller is bound.
+     * User preference: swiping the app away from the recents list STOPS the
+     * music. The player is stopped and its queue cleared BEFORE the default
+     * Media3 handling runs, so the media notification disappears and the
+     * service has nothing left to stay foregrounded for — Media3 then stops
+     * the service itself, the session is released and the next launch starts
+     * clean (the self-healing onGetSession + connect watchdog below make a
+     * half-released session harmless anyway).
      */
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // Intentionally no teardown. Playback continues in the background;
-        // Media3 stops the service automatically when it is no longer needed.
+        try {
+            mediaSession?.player?.let { player ->
+                player.stop()
+                player.clearMediaItems()
+            }
+        } catch (_: Exception) {
+            // Best-effort stop; the default handling still applies.
+        }
         super.onTaskRemoved(rootIntent)
     }
 

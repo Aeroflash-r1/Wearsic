@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        StartupDiagnostics.log(this, "activity-oncreate")
 
         // Media notifications require POST_NOTIFICATIONS on API 33+ (Wear OS 6).
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&

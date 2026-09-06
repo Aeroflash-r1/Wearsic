@@ -14,8 +14,8 @@ android {
     applicationId = "com.wearsic.app"
     minSdk = 26
     targetSdk = 36
-    versionCode = 10
-    versionName = "1.4.0"
+    versionCode = 11
+    versionName = "1.0.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -42,6 +42,17 @@ signingConfigs {
       signingConfig = signingConfigs.getByName("release")
     }
     debug { signingConfig = signingConfigs.getByName("debug") }
+
+    // On-device diagnostic build: R8-minified like release (so it is smooth on
+    // the watch — plain debug bytecode is unusably slow) but signed with the
+    // debug key so it installs without the release keystore. Its own
+    // applicationId lets it sit next to the release app for A/B testing.
+    create("minified") {
+      initWith(getByName("release"))
+      signingConfig = signingConfigs.getByName("debug")
+      applicationIdSuffix = ".minified"
+      versionNameSuffix = "-minified"
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11

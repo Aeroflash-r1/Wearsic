@@ -34,11 +34,11 @@ import java.net.InetSocketAddress
  * Offline persistence behaviors that protect the two most-reported UX bugs:
  *
  * 1. Recently Played identity correctness: since the 1.5 YTM migration every
- *    recording carries ONE real YouTube videoId, so the trackId PK alone
- *    dedupes replays (one row per recording, replayed rows bump to the top).
- *    Different recordings that share a title/artist must KEEP separate rows —
- *    collapsing them by title+artist made Recents silently replace the row
- *    the user tapped and play a different (same-named) recording.
+ *    recording carries ONE real YouTube videoId. The DB keeps one row PER
+ *    RECORDING (replayed rows bump to the top, different recordings sharing a
+ *    title/artist never collapse or lose data), while the visible Recents
+ *    list groups by song name so the same song never appears twice — each
+ *    shown row resolves the EXACT id stored on it, never a title re-search.
  * 2. Interrupted downloads resuming from the last written byte instead of
  *    restarting (matters on flaky tunnel connections).
  *
@@ -84,15 +84,20 @@ class OfflinePersistenceTest {
     // ---------------- Recently Played identity ----------------
 
     @Test
-    fun `different recordings with the same title and artist stay separate rows`() = runBlocking {
-        // Two REAL recordings (distinct videoIds) that share title+artist.
+    fun `same-title recordings keep per-id rows but show once as the latest play`() = runBlocking {
+        // Two REAL recordings (distinct videoIds) sharing title+artist.
         recents.recordPlayed(track("AAA", title = "Test Song", artist = "Artist"))
         recents.recordPlayed(track("BBB", title = "Test Song", artist = "Artist"))
 
+        // DB keeps both recordings (identity preserved — no collapse/data loss).
+        assertEquals(2, memoryDb.recentTrackDao().countRows())
+        // The visible Recents list shows ONE row per song name — the latest
+        // play (BBB) — so the same song never stacks on screen.
         val rows = recents.recentTracksFlow.first()
-        assertEquals("distinct recordings must not collapse: " + rows.map { it.id }, 2, rows.size)
+        assertEquals("visible list groups by song: " + rows.map { it.id }, 1, rows.size)
         assertEquals("BBB", rows[0].id)
-        assertEquals("AAA", rows[1].id)
+        // The visible row still resolves BBB's own recording exactly.
+        assertEquals("https://server.example/api/stream/BBB", rows[0].mediaUri)
     }
 
     @Test
@@ -107,18 +112,19 @@ class OfflinePersistenceTest {
     }
 
     @Test
-    fun `replaying AAA after BBB keeps both and replays the exact AAA recording`() = runBlocking {
+    fun `replaying AAA after BBB keeps both rows and shows the exact AAA recording`() = runBlocking {
         recents.recordPlayed(track("AAA", title = "Test Song", artist = "Artist"))
         recents.recordPlayed(track("BBB", title = "Test Song", artist = "Artist"))
         recents.recordPlayed(track("AAA", title = "Test Song", artist = "Artist")) // AAA again
 
+        // Both recordings still exist under the hood.
+        assertEquals(2, memoryDb.recentTrackDao().countRows())
+        // The visible row is AAA again (the latest play), pointing at AAA's
+        // stream — replaying never plays the wrong recording.
         val rows = recents.recentTracksFlow.first()
-        assertEquals("both recordings remain: " + rows.map { it.id }, 2, rows.size)
-        // AAA is at the top again, and its mediaUri still targets AAA's stream.
+        assertEquals(1, rows.size)
         assertEquals("AAA", rows[0].id)
         assertEquals("https://server.example/api/stream/AAA", rows[0].mediaUri)
-        assertEquals("BBB", rows[1].id)
-        assertEquals("https://server.example/api/stream/BBB", rows[1].mediaUri)
     }
 
     @Test

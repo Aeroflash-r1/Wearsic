@@ -6,6 +6,7 @@ import android.net.ConnectivityManager
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.StartupDiagnostics
 import com.example.WearsicApp
 import com.example.data.WearsicDownloadRepository
 import com.example.data.WearsicMusicRepository
@@ -105,7 +106,14 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
     // second one here created a duplicate DataStore flow owner.
     private val preferencesRepository = container.preferencesRepository
     private val downloadManager = WearsicDownloadManager(application.applicationContext, downloadRepository)
-    private val playbackController = WearsicPlaybackController(application.applicationContext)
+    // Recovery mode: the previous process died during cold start (its session
+    // player is gone with it). Deferring the eager media-session connect keeps
+    // a wedged session from ever holding the opening screen hostage again;
+    // playback commands still reconnect on demand.
+    private val playbackController = WearsicPlaybackController(
+        application.applicationContext,
+        eagerConnect = !StartupDiagnostics.recoveryMode
+    )
 
     val uiState: StateFlow<PlaybackUiState> = playbackController.uiState
 
@@ -231,6 +239,10 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
     private val _storageStats = MutableStateFlow(StorageStats())
     val storageStats: StateFlow<StorageStats> = _storageStats.asStateFlow()
 
+    private val _startupHealth = MutableStateFlow("")
+    /** One-line startup/recovery summary shown at the bottom of Settings. */
+    val startupHealth: StateFlow<String> = _startupHealth.asStateFlow()
+
     @Volatile
     private var hiddenPlaylistIds: Set<String> = emptySet()
 
@@ -259,6 +271,7 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
     }
 
     init {
+        StartupDiagnostics.log(application.applicationContext, "viewmodel-constructed")
         // Sync the optional API key into the HTTP client for every request.
         viewModelScope.launch {
             preferencesRepository.apiKeyFlow.collect { key ->
@@ -300,6 +313,12 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
             playbackController.awaitInitialConnectionOrTimeout()
             downloadManager.trimAutoCache()
             downloadManager.flushPendingDeletions()
+            StartupDiagnostics.log(application.applicationContext, "startup-reconcile-done")
+        }
+        // Startup health summary for Settings (previous crash / recovery mode).
+        viewModelScope.launch(Dispatchers.IO) {
+            _startupHealth.value =
+                StartupDiagnostics.lastStartupSummary(application.applicationContext)
         }
 
         // Auto-eviction / Clear auto-saved / individual deletes must never cut
