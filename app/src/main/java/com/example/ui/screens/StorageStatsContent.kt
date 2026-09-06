@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
-import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Delete
@@ -32,6 +31,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.WearsicScreenHeader
 import com.example.ui.theme.WearsicGlassBorder
+import com.example.ui.theme.WearsicTextMuted
+import com.example.ui.theme.WearsicTextPrimary
+import com.example.ui.theme.WearsicTextSecondary
+import com.example.ui.theme.WearsicVibrantLavender
+import com.example.ui.theme.WearsicViolet
 
 /**
  * Local-music storage, mathematically consistent with the one-file-per-track
@@ -49,8 +53,6 @@ fun StorageStatsContent(
     modifier: Modifier = Modifier
 ) {
     val totalMb = autoMb + manualMb
-    val lavender = Color(0xFFD0BCFF)
-    val purple = Color(0xFF8A5CF6)
 
     ScalingLazyColumn(
         state = rememberScalingLazyListState(),
@@ -72,7 +74,7 @@ fun StorageStatsContent(
                 detail = "$autoCount songs • %.1f MB".format(autoMb),
                 mb = autoMb,
                 totalMb = totalMb,
-                color = lavender
+                color = WearsicVibrantLavender
             )
         }
         item {
@@ -81,7 +83,7 @@ fun StorageStatsContent(
                 detail = "$manualCount songs • %.1f MB".format(manualMb),
                 mb = manualMb,
                 totalMb = totalMb,
-                color = purple
+                color = WearsicViolet
             )
         }
         item {
@@ -91,8 +93,8 @@ fun StorageStatsContent(
                     .padding(top = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("Total local music", color = Color(0xFFE6E1E5), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Text("%.1f MB".format(totalMb), color = Color(0xFFD0BCFF), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("Total local music", color = WearsicTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("%.1f MB".format(totalMb), color = WearsicVibrantLavender, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
         }
 
@@ -106,7 +108,7 @@ fun StorageStatsContent(
         item {
             Text(
                 text = "Manual downloads are kept until you remove them.",
-                color = Color(0xFF8E8A93),
+                color = WearsicTextMuted,
                 fontSize = 9.sp,
                 modifier = Modifier.padding(horizontal = 8.dp)
             )
@@ -126,8 +128,8 @@ private fun StatRow(
     val fill = if (totalMb > 0.0) (mb / totalMb).toFloat() else 0f
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(modifier = Modifier.fillMaxWidth()) {
-            Text(label, color = Color(0xFFE6E1E5), fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-            Text(detail, color = Color(0xFFCAC4D0), fontSize = 10.sp)
+            Text(label, color = WearsicTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Text(detail, color = WearsicTextSecondary, fontSize = 10.sp)
         }
         Spacer(modifier = Modifier.height(4.dp))
         Box(
@@ -166,8 +168,8 @@ private fun ActionRow(
             .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = Color(0xFFD0BCFF), modifier = Modifier.size(16.dp))
+        Icon(icon, contentDescription = null, tint = WearsicVibrantLavender, modifier = Modifier.size(16.dp))
         Spacer(modifier = Modifier.size(10.dp))
-        Text(label, color = Color(0xFFE6E1E5), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text(label, color = WearsicTextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
     }
 }

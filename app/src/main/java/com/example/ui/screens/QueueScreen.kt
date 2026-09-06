@@ -55,6 +55,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.model.PlaybackUiState
 import com.example.model.Track
+import com.example.ui.components.WearsicEmptyState
 import com.example.ui.components.WearsicScreenHeader
 import com.example.ui.components.WearsicSongRow
 import com.example.ui.components.WearsicSongRowActionButton
@@ -62,7 +63,6 @@ import com.example.ui.theme.WearsicBlack
 import com.example.ui.theme.WearsicError
 import com.example.ui.theme.WearsicGlassBorder
 import com.example.ui.theme.WearsicGlassFill
-import com.example.ui.theme.WearsicLavenderContainer
 import com.example.ui.theme.WearsicSurface
 import com.example.ui.theme.WearsicSurfaceBorder
 import com.example.ui.theme.WearsicSurfaceBorderSubtle
@@ -201,42 +201,11 @@ fun QueueScreen(
 
             if (queue.isEmpty()) {
                 item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(WearsicLavenderContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
-                                contentDescription = null,
-                                tint = WearsicVibrantLavender,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Queue is empty",
-                            color = WearsicTextPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            textAlign = TextAlign.Center
-                        )
-                        Text(
-                            text = "Tap a search result to queue that whole list, or use the ⋯ menu on a track to add one song.",
-                            color = WearsicTextMuted,
-                            fontSize = 10.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                        )
-                    }
+                    WearsicEmptyState(
+                        title = "Queue is empty",
+                        message = "Tap a search result to queue that whole list, or use the ⋯ menu on a track to add one song.",
+                        icon = Icons.AutoMirrored.Rounded.QueueMusic
+                    )
                 }
             } else {
                 // Now Playing card

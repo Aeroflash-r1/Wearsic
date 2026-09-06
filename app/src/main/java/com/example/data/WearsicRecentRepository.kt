@@ -19,6 +19,13 @@ class WearsicRecentRepository(
 
     suspend fun recordPlayed(track: Track) {
         if (track.id.isBlank()) return
+        // The stable track id IS the identity (a real YouTube videoId since
+        // the 1.5 YTM migration): upserting on the PK keeps one row per
+        // recording and bumps it to the top on replay. Two DIFFERENT
+        // recordings that happen to share a title/artist keep separate rows —
+        // deduping by title+artist here played the wrong recording (a
+        // same-named track silently replaced the one the user actually tapped
+        // in Recents).
         recentTrackDao.upsert(
             WearsicRecentTrackEntity(
                 trackId = track.id,
@@ -31,11 +38,6 @@ class WearsicRecentRepository(
                 playedAt = System.currentTimeMillis()
             )
         )
-        // The same song can reach the watch under different ids — surrogate
-        // `it:12345` from search vs the real YouTube id from radio/playlists —
-        // so the trackId PK alone cannot dedupe. Drop other rows that are the
-        // same song by title+artist, keeping the freshest (just-upserted) row.
-        recentTrackDao.deleteDuplicatesOf(track.id, track.title, track.artist)
     }
 
     suspend fun clearRecent() {

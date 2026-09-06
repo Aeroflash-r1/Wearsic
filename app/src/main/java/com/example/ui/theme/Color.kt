@@ -13,6 +13,7 @@ val WearsicSurfaceBorderSubtle = Color(0x0DFFFFFF) // white/5
 
 // Vibrant Accents
 val WearsicVibrantLavender = Color(0xFFD0BCFF)
+val WearsicViolet = Color(0xFF8A5CF6) // deep signature violet (gradients, secondary bars)
 val WearsicLavenderSecondary = Color(0xFFCCC2DC)
 val WearsicLavenderTertiary = Color(0xFFB8A1FF)
 val WearsicLavenderSubtle = Color(0x33D0BCFF)

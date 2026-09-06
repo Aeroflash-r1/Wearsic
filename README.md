@@ -32,7 +32,9 @@ Wearsic adopts a clean, modular Model-View-ViewModel (MVVM) architecture with st
 ### 1. Presentation & Interaction (Jetpack Compose for Wear OS)
 - **Rotary Scroll Input**: Uses a dedicated, zero-allocation custom `wearsicRotaryScroll()` modifier leveraging `FocusRequester` and `dispatchRawDelta` to translate physical crown and touch bezel movements directly into list movements and player seeks.
 - **Watch-First Touch Targets**: Primary play/pause and transport controls meet the 48dp Wear OS guideline (`WearsicCircularIconButton`, blob pod 84dp); some secondary inline row actions are intentionally smaller (26–38dp) to keep dense lists usable.
-- **Material Design 3 (Vibrant Palette)**: Deep black background (`#000000`), dark charcoal surfaces (`#1C1B1F`), and high-contrast Lavender accents (`#D0BCFF`).
+- **Material Design 3 (Vibrant Palette)**: Deep black background (`#000000`), dark charcoal surfaces (`#1C1B1F`), and high-contrast Lavender accents (`#D0BCFF`). All colors/type live as named tokens in `ui/theme/Color.kt` — no scattered hex literals.
+- **Consistent components & states**: screens share canonical empty/loading states (`WearsicEmptyState`, `WearsicLoadingState`), glass pills, headers and song rows, so loading/empty/error moments look identical everywhere.
+- **Recently Played is identity-exact**: recents rows are keyed by the stable track ID, never by title — two different recordings that share a title/artist stay separate rows and always replay their exact recording (regression-covered by `RecentPlaybackIdentityTest`).
 
 ### 2. Playback Foundation (AndroidX Media3)
 - **Single ExoPlayer Instance**: Instantiated inside the lifecycle of `WearsicMediaService` (extending `MediaSessionService`).
@@ -65,7 +67,7 @@ This client is fully hardened to support any standard Ktor/OkHttp endpoint follo
 ```json
 {
   "status": "ok",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "serverName": "Wearsic Engine",
   "transcoderAvailable": true,
   "extraction": { "successCount": 42, "failureCount": 1, "failureRatePercent": 2, "consecutiveFailures": 0, "lastError": null },
@@ -114,6 +116,12 @@ This client is fully hardened to support any standard Ktor/OkHttp endpoint follo
 
 ### 4. Lifecycle & Coroutine Leak Protection
 - Releases `MediaController` and cancels the coroutine supervisor scope job inside `WearsicPlaybackController.release()` when screens or ViewModels clear.
+
+### 5. Relaunch Reliability (no more stuck splash on reopen)
+- **Swiping the app away no longer tears down the media session**: playback keeps running in the background (Wear OS media notification), and the next app launch connects to a live session instantly instead of inheriting a half-released one.
+- **Self-healing media service**: if the service is ever alive with a missing session, `onGetSession` rebuilds the player + session instead of returning `null` (which used to wedge every future `MediaController.connect()` and hang the splash).
+- **Bounded session connect**: `buildAsync` has a 15s watchdog — a future that never resolves is released and reconnects are scheduled, so the app never waits forever; startup storage reconciliation uses the same bound.
+- **Crash containment**: a transient Room/IO error in the playback-state collector is logged and skipped instead of crash-looping the app on every relaunch (covered by `RelaunchWithDataTest`).
 
 ---
 
@@ -183,5 +191,5 @@ keytool -genkeypair -v -keystore my-upload-key.jks -alias upload \
 Then cut a release:
 
 ```bash
-git tag v1.8.0 && git push origin v1.8.0
+git tag v1.9.0 && git push origin v1.9.0
 ```

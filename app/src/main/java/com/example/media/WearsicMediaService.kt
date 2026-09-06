@@ -32,44 +32,9 @@ class WearsicMediaService : MediaSessionService() {
         // channel; no manual channel needed (and a manual one would leave
         // dead config behind once the custom provider is gone).
 
-        // 1. Audio attributes for battery-conscious music playback
-        val audioAttributes = AudioAttributes.Builder()
-            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-            .setUsage(C.USAGE_MEDIA)
-            .build()
-
-        // 2. Build the MediaSourceFactory. NO persistent disk cache: playback
-        //    buffers in memory only, and the sole permanent local copy of a
-        //    song is the single Auto/Manual download file. Online streaming,
-        //    seeking and local-file playback all resolve through
-        //    DefaultDataSource (OkHttp upstream for http(s), platform file
-        //    providers for file:// and android.resource:// URIs).
-        val mediaSourceFactory = DefaultMediaSourceFactory(
-            WearsicStreamDataSource.createDataSourceFactory(this)
-        )
-
-        // 3. Buffer policy: a modest in-memory window (ExoPlayer memory
-        //    buffering only — nothing is written to disk).
-        // bufferForPlaybackMs 1500: start audio after ~1.5s of buffer instead
-        // of 2.5s — noticeably faster tap-to-sound over the tunnel. Rebuffer
-        // stays conservative (5s) so a mid-song stall still waits properly.
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                /* minBufferMs = */ 30000,
-                /* maxBufferMs = */ 60000,
-                /* bufferForPlaybackMs = */ 1500,
-                /* bufferForPlaybackAfterRebufferMs = */ 5000
-            )
-            .build()
-
-        // 4. Initialize ExoPlayer
-        val exoPlayer = ExoPlayer.Builder(this)
-            .setAudioAttributes(audioAttributes, /* handleAudioFocus= */ true)
-            .setHandleAudioBecomingNoisy(true)
-            .setWakeMode(C.WAKE_MODE_LOCAL)
-            .setLoadControl(loadControl)
-            .setMediaSourceFactory(mediaSourceFactory)
-            .build()
+        // 1-4. Build the player (audio attributes, memory-only buffering media
+        // source, load policy) — shared with recreateSession().
+        val exoPlayer = buildPlayer()
 
         this.player = exoPlayer
 
@@ -94,31 +59,30 @@ class WearsicMediaService : MediaSessionService() {
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
+        // Self-healing: if the session was torn down by a previous lifecycle
+        // event (or lost by a process/surface hiccup) while the service is
+        // still alive, rebuild it instead of returning null forever. Returning
+        // null wedges every future MediaController.connect() — the relaunch
+        // then hangs on the splash screen with no way to recover.
+        if (mediaSession == null) {
+            runCatching { recreateSession() }
+        }
         return mediaSession
     }
 
     /**
-     * Swiping the app away from recents ends playback and tears the service
-     * down cleanly: pause, release the player and session (removes the media
-     * notification and foreground state), then stop.
+     * Swiping the app away from recents must NOT tear down playback: Wear OS
+     * users expect music to continue with the app closed. The service stays
+     * foregrounded via Media3's media notification while the player has
+     * content; the system keeps the process alive and the session reachable,
+     * so the next app launch connects instantly instead of inheriting a
+     * half-released session (which previously wedged the relaunch). Media3
+     * stops the service on its own once playback is idle/stopped and no
+     * controller is bound.
      */
     override fun onTaskRemoved(rootIntent: Intent?) {
-        val session = mediaSession
-        if (session == null) {
-            stopSelf()
-            super.onTaskRemoved(rootIntent)
-            return
-        }
-
-        val activePlayer = session.player
-        if (activePlayer.isPlaying) {
-            activePlayer.pause()
-        }
-        activePlayer.stop()
-        activePlayer.release()
-        session.release()
-        mediaSession = null
-        stopSelf()
+        // Intentionally no teardown. Playback continues in the background;
+        // Media3 stops the service automatically when it is no longer needed.
         super.onTaskRemoved(rootIntent)
     }
 
@@ -130,5 +94,58 @@ class WearsicMediaService : MediaSessionService() {
         }
         player = null
         super.onDestroy()
+    }
+
+    /** Rebuilds player + session after a teardown, preserving nothing (the
+     *  queue is gone with the old player; users re-select music). */
+    private fun recreateSession() {
+        player?.release()
+        val exoPlayer = buildPlayer()
+        this.player = exoPlayer
+        val sessionActivityIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        mediaSession = MediaSession.Builder(this, exoPlayer)
+            .setSessionActivity(sessionActivityIntent)
+            .build()
+    }
+
+    @OptIn(UnstableApi::class)
+    private fun buildPlayer(): ExoPlayer {
+        // 1. Audio attributes for battery-conscious music playback
+        val audioAttributes = AudioAttributes.Builder()
+            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+            .setUsage(C.USAGE_MEDIA)
+            .build()
+
+        // 2. Media source factory. NO persistent disk cache: playback buffers
+        //    in memory only, and the sole permanent local copy of a song is
+        //    the single Auto/Manual download file.
+        val mediaSourceFactory = DefaultMediaSourceFactory(
+            WearsicStreamDataSource.createDataSourceFactory(this)
+        )
+
+        // 3. Buffer policy: a modest in-memory window (ExoPlayer memory
+        //    buffering only — nothing is written to disk).
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs = */ 30000,
+                /* maxBufferMs = */ 60000,
+                /* bufferForPlaybackMs = */ 1500,
+                /* bufferForPlaybackAfterRebufferMs = */ 5000
+            )
+            .build()
+
+        // 4. Player
+        return ExoPlayer.Builder(this)
+            .setAudioAttributes(audioAttributes, /* handleAudioFocus= */ true)
+            .setHandleAudioBecomingNoisy(true)
+            .setWakeMode(C.WAKE_MODE_LOCAL)
+            .setLoadControl(loadControl)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build()
     }
 }

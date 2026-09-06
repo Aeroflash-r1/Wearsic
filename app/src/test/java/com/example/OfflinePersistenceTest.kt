@@ -33,9 +33,12 @@ import java.net.InetSocketAddress
 /**
  * Offline persistence behaviors that protect the two most-reported UX bugs:
  *
- * 1. Recently Played showing the SAME song twice when it reached the watch
- *    under different ids (surrogate `it:123` from search vs the real YouTube
- *    id from radio) — dedupe must be title+artist based.
+ * 1. Recently Played identity correctness: since the 1.5 YTM migration every
+ *    recording carries ONE real YouTube videoId, so the trackId PK alone
+ *    dedupes replays (one row per recording, replayed rows bump to the top).
+ *    Different recordings that share a title/artist must KEEP separate rows —
+ *    collapsing them by title+artist made Recents silently replace the row
+ *    the user tapped and play a different (same-named) recording.
  * 2. Interrupted downloads resuming from the last written byte instead of
  *    restarting (matters on flaky tunnel connections).
  *
@@ -78,18 +81,18 @@ class OfflinePersistenceTest {
         mediaUri = "https://server.example/api/stream/$id",
     )
 
-    // ---------------- Recently Played dedupe ----------------
+    // ---------------- Recently Played identity ----------------
 
     @Test
-    fun `same song under different ids keeps only the freshest recents row`() = runBlocking {
-        // Played from SEARCH (surrogate id)...
-        recents.recordPlayed(track("it:123"))
-        // ...then the same song from RADIO (real YouTube id).
-        recents.recordPlayed(track("yt:xyz"))
+    fun `different recordings with the same title and artist stay separate rows`() = runBlocking {
+        // Two REAL recordings (distinct videoIds) that share title+artist.
+        recents.recordPlayed(track("AAA", title = "Test Song", artist = "Artist"))
+        recents.recordPlayed(track("BBB", title = "Test Song", artist = "Artist"))
 
         val rows = recents.recentTracksFlow.first()
-        assertEquals("same title+artist under different ids must collapse: " + rows.map { it.id }, 1, rows.size)
-        assertEquals("yt:xyz", rows[0].id)
+        assertEquals("distinct recordings must not collapse: " + rows.map { it.id }, 2, rows.size)
+        assertEquals("BBB", rows[0].id)
+        assertEquals("AAA", rows[1].id)
     }
 
     @Test
@@ -104,7 +107,22 @@ class OfflinePersistenceTest {
     }
 
     @Test
-    fun `similar titles from different artists are NOT deduped`() = runBlocking {
+    fun `replaying AAA after BBB keeps both and replays the exact AAA recording`() = runBlocking {
+        recents.recordPlayed(track("AAA", title = "Test Song", artist = "Artist"))
+        recents.recordPlayed(track("BBB", title = "Test Song", artist = "Artist"))
+        recents.recordPlayed(track("AAA", title = "Test Song", artist = "Artist")) // AAA again
+
+        val rows = recents.recentTracksFlow.first()
+        assertEquals("both recordings remain: " + rows.map { it.id }, 2, rows.size)
+        // AAA is at the top again, and its mediaUri still targets AAA's stream.
+        assertEquals("AAA", rows[0].id)
+        assertEquals("https://server.example/api/stream/AAA", rows[0].mediaUri)
+        assertEquals("BBB", rows[1].id)
+        assertEquals("https://server.example/api/stream/BBB", rows[1].mediaUri)
+    }
+
+    @Test
+    fun `similar titles from different artists stay separate rows`() = runBlocking {
         recents.recordPlayed(track("a1", artist = "Crowded House"))
         recents.recordPlayed(track("b1", artist = "Some Cover Band"))
         assertEquals(2, recents.recentTracksFlow.first().size)

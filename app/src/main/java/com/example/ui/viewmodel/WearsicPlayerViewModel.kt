@@ -294,7 +294,10 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
         // see it. Once the outcome is known (connected with a real current
         // track, or definitively nothing playing), processing is safe.
         viewModelScope.launch {
-            playbackController.awaitInitialConnection()
+            // Bounded wait: a wedged media session must not stall storage
+            // reconciliation forever (was an unbounded await that hung the
+            // app on the splash screen when Media3's connect never resolved).
+            playbackController.awaitInitialConnectionOrTimeout()
             downloadManager.trimAutoCache()
             downloadManager.flushPendingDeletions()
         }
@@ -324,38 +327,48 @@ class WearsicPlayerViewModel(application: Application) : AndroidViewModel(applic
             var lastLocalProtectedId: String? = null
 
             playbackController.uiState.collect { state ->
-                val track = state.currentTrack
-                val protectedLocalId = track.id.takeIf {
-                    it.isNotBlank() && track.mediaUri.startsWith("/")
-                }
-                if (protectedLocalId != lastLocalProtectedId) {
-                    lastLocalProtectedId = protectedLocalId
-                    downloadManager.flushPendingDeletions()
-                }
-                if (track.id.isNotBlank()) {
-                    if (track.id != lastTrack?.id) {
-                        lastTrack = track
-                        recentRepository.recordPlayed(track)
-                        trackBecameCurrentAtMs = SystemClock.elapsedRealtime()
+                // Containment: this collector runs on every playback event for
+                // the whole app lifetime. A transient Room/IO failure here
+                // (locked DB at cold start, etc.) used to cancel the whole
+                // viewModelScope and crash-loop the app on every relaunch —
+                // the reported "app closes itself and can never be opened".
+                try {
+                    val track = state.currentTrack
+                    val protectedLocalId = track.id.takeIf {
+                        it.isNotBlank() && track.mediaUri.startsWith("/")
                     }
+                    if (protectedLocalId != lastLocalProtectedId) {
+                        lastLocalProtectedId = protectedLocalId
+                        downloadManager.flushPendingDeletions()
+                    }
+                    if (track.id.isNotBlank()) {
+                        if (track.id != lastTrack?.id) {
+                            lastTrack = track
+                            recentRepository.recordPlayed(track)
+                            trackBecameCurrentAtMs = SystemClock.elapsedRealtime()
+                        }
 
-                    // Defer the auto-cache until the song has been current for
-                    // ~45s: starting the full-file download the instant a track
-                    // plays doubled network on first play (stream + download
-                    // racing) and quick skips still paid for a whole wasted
-                    // file. 45s of listening is real intent — and a few MB
-                    // over WiFi finishes long before the song does.
-                    if (SystemClock.elapsedRealtime() - trackBecameCurrentAtMs >= AUTO_CACHE_LISTEN_MS) {
-                        maybeAutoCacheTrack(track, autoCachedTrackIds)
-                    }
+                        // Defer the auto-cache until the song has been current for
+                        // ~45s: starting the full-file download the instant a track
+                        // plays doubled network on first play (stream + download
+                        // racing) and quick skips still paid for a whole wasted
+                        // file. 45s of listening is real intent — and a few MB
+                        // over WiFi finishes long before the song does.
+                        if (SystemClock.elapsedRealtime() - trackBecameCurrentAtMs >= AUTO_CACHE_LISTEN_MS) {
+                            maybeAutoCacheTrack(track, autoCachedTrackIds)
+                        }
 
-                    // Pre-warm the server for the upcoming song (1-byte request:
-                    // the server resolves + caches the real stream URL so the
-                    // next play() skips the multi-second extraction).
-                    val nextTrack = state.playlist.getOrNull(state.currentTrackIndex + 1)
-                    if (nextTrack != null && nextTrack.id != lastWarmUpTrackId) {
-                        warmUpStream(nextTrack)
+                        // Pre-warm the server for the upcoming song (1-byte request:
+                        // the server resolves + caches the real stream URL so the
+                        // next play() skips the multi-second extraction).
+                        val nextTrack = state.playlist.getOrNull(state.currentTrackIndex + 1)
+                        if (nextTrack != null && nextTrack.id != lastWarmUpTrackId) {
+                            warmUpStream(nextTrack)
+                        }
                     }
+                } catch (e: Exception) {
+                    // Never let a collector error kill the ViewModel scope.
+                    android.util.Log.w("WearsicVM", "playback-state handling failed", e)
                 }
             }
         }

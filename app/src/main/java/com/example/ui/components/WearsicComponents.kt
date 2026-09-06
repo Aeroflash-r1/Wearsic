@@ -39,11 +39,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.Text
 import com.example.ui.theme.WearsicBlack
 import com.example.ui.theme.WearsicGlassBorder
 import com.example.ui.theme.WearsicGlassFill
+import com.example.ui.theme.WearsicLavenderContainer
 import com.example.ui.theme.WearsicSurface
 import com.example.ui.theme.WearsicSurfaceBorder
 import com.example.ui.theme.WearsicSurfaceBorderSubtle
@@ -54,6 +56,7 @@ import com.example.ui.theme.WearsicTextSecondary
 import com.example.ui.theme.WearsicTextWhite60
 import com.example.ui.theme.WearsicTextWhite80
 import com.example.ui.theme.WearsicVibrantLavender
+import com.example.ui.theme.WearsicViolet
 
 /**
  * High-contrast vibrant primary pill button (e.g. "Downloads")
@@ -403,7 +406,7 @@ fun WearsicScreenHeader(
                 .clip(CircleShape)
                 .background(
                     Brush.horizontalGradient(
-                        listOf(WearsicVibrantLavender, Color(0xFF8A5CF6))
+                        listOf(WearsicVibrantLavender, WearsicViolet)
                     )
                 )
         )
@@ -417,5 +420,83 @@ fun WearsicScreenHeader(
                 modifier = Modifier.padding(top = 6.dp)
             )
         }
+    }
+}
+
+/**
+ * Canonical empty state used by every list screen (Downloads, Queue,
+ * Favorites, Playlists, playlist detail, Artists…). One implementation so
+ * each screen's "nothing here yet" moment looks and reads identically:
+ * a lavender icon medallion, a bold primary title and a muted hint line.
+ */
+@Composable
+fun WearsicEmptyState(
+    title: String,
+    message: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    iconContentDescription: String? = null
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(WearsicLavenderContainer),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = iconContentDescription,
+                tint = WearsicVibrantLavender,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = title,
+            color = WearsicTextPrimary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = message,
+            color = WearsicTextMuted,
+            fontSize = 10.sp,
+            lineHeight = 14.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+        )
+    }
+}
+
+/**
+ * Canonical inline loading state (spinner + label) used by list screens
+ * while their first page of content is being fetched.
+ */
+@Composable
+fun WearsicLoadingState(
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        CircularProgressIndicator(modifier = Modifier.size(22.dp))
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = label,
+            color = WearsicTextSecondary,
+            fontSize = 11.sp
+        )
     }
 }

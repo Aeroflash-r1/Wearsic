@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 class WearsicPlaybackController(private val context: Context) {
 
@@ -49,6 +50,14 @@ class WearsicPlaybackController(private val context: Context) {
         private const val MAX_RECONNECT_ATTEMPTS = 5
         private const val MAX_PLAYBACK_RETRIES = 3
         private const val PREVIOUS_DOUBLE_TAP_WINDOW_MS = 1500L
+
+        /**
+         * Bound on how long storage code waits for the session connection
+         * outcome. Media3's buildAsync future is documented to occasionally
+         * never complete (released session mid-connect, binder stall) —
+         * waiting forever on it hung the app on the splash screen.
+         */
+        private const val INITIAL_CONNECTION_TIMEOUT_MS = 15_000L
     }
 
     /**
@@ -58,6 +67,7 @@ class WearsicPlaybackController(private val context: Context) {
      * this to know when playback state is trustworthy before touching files.
      */
     private val initialConnectionKnown = CompletableDeferred<Boolean>()
+    private var connectionWatchdogJob: Job? = null
 
     /**
      * Suspends until the session connection outcome is known (see
@@ -65,6 +75,19 @@ class WearsicPlaybackController(private val context: Context) {
      * on false nothing is (or will be) playing through this controller.
      */
     suspend fun awaitInitialConnection(): Boolean = initialConnectionKnown.await()
+
+    /**
+     * Like [awaitInitialConnection] but bounded: resolves within
+     * [timeoutMs] or reports "unknown" (false) so callers can never be stuck
+     * forever by a wedged session connection.
+     */
+    suspend fun awaitInitialConnectionOrTimeout(
+        timeoutMs: Long = INITIAL_CONNECTION_TIMEOUT_MS
+    ): Boolean = try {
+        withTimeoutOrNull(timeoutMs) { initialConnectionKnown.await() } ?: false
+    } catch (_: Exception) {
+        false
+    }
 
     private val _uiState = MutableStateFlow(
         PlaybackUiState(
@@ -154,6 +177,24 @@ class WearsicPlaybackController(private val context: Context) {
 
             val future = MediaController.Builder(context, sessionToken).buildAsync()
             controllerFuture = future
+
+            // Watchdog: if this future never completes (a real Media3
+            // failure mode after a session teardown/stale binder), release it
+            // and schedule reconnects instead of leaving the app permanently
+            // unconnected with a pending play request.
+            connectionWatchdogJob?.cancel()
+            connectionWatchdogJob = scope.launch {
+                delay(INITIAL_CONNECTION_TIMEOUT_MS)
+                if (controllerFuture === future && mediaController == null) {
+                    runCatching { MediaController.releaseFuture(future) }
+                    if (controllerFuture === future) controllerFuture = null
+                    // Mark the initial outcome known (false) only the first
+                    // time; after a session teardown the deferred is already
+                    // complete and reconnects just restore the controller.
+                    initialConnectionKnown.complete(false)
+                    scheduleReconnect()
+                }
+            }
 
             future.addListener(
                 {

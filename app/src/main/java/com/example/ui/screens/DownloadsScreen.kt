@@ -53,6 +53,7 @@ import coil.request.ImageRequest
 import com.example.data.db.DownloadState
 import com.example.data.db.WearsicDownloadEntity
 import com.example.model.Track
+import com.example.ui.components.WearsicEmptyState
 import com.example.ui.components.WearsicScreenHeader
 import com.example.ui.components.WearsicSongRow
 import com.example.ui.components.WearsicSongRowActionButton
@@ -112,42 +113,11 @@ fun DownloadsScreen(
             // Empty State
             if (downloads.isEmpty()) {
                 item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(WearsicLavenderContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Download,
-                                contentDescription = null,
-                                tint = WearsicVibrantLavender,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "No offline tracks",
-                            color = WearsicTextPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            textAlign = TextAlign.Center
-                        )
-                        Text(
-                            text = "Search & download music to listen offline without internet.",
-                            color = WearsicTextMuted,
-                            fontSize = 10.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                        )
-                    }
+                    WearsicEmptyState(
+                        title = "No offline tracks",
+                        message = "Search & download music to listen offline without internet.",
+                        icon = Icons.Rounded.Download
+                    )
                 }
             }
 

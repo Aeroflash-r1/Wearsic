@@ -123,6 +123,17 @@ fun SettingsScreen(
                 )
             }
 
+            // ── Connection ───────────────────────────────────────────
+            item {
+                Text(
+                    text = "Connection",
+                    color = WearsicVibrantLavender,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+
             // Server URL Input Field (Fully Keyboard-enabled)
             item {
                 var isFocused by remember { mutableStateOf(false) }

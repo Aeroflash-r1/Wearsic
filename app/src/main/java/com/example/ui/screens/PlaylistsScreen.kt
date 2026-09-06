@@ -48,12 +48,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.example.model.Playlist
 import com.example.ui.theme.WearsicGlassBorder
 import com.example.ui.theme.WearsicGlassFill
+import com.example.ui.components.WearsicEmptyState
+import com.example.ui.components.WearsicLoadingState
 import com.example.ui.components.WearsicSecondaryPillButton
 import com.example.ui.components.WearsicScreenHeader
 import com.example.ui.components.WearsicSongRow
 import com.example.ui.theme.WearsicBlack
 import com.example.ui.theme.WearsicError
-import com.example.ui.theme.WearsicLavenderContainer
 import com.example.ui.theme.WearsicSurface
 import com.example.ui.theme.WearsicTextMuted
 import com.example.ui.theme.WearsicTextPrimary
@@ -131,47 +132,18 @@ fun PlaylistsScreen(
             // Loading state
             if (playlistsState.isLoading && playlistsState.playlists.isEmpty()) {
                 item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(22.dp))
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Loading playlists...",
-                            color = WearsicTextSecondary,
-                            fontSize = 11.sp
-                        )
-                    }
+                    WearsicLoadingState(label = "Loading playlists...")
                 }
             }
 
             // Empty state
             if (!playlistsState.isLoading && playlistsState.playlists.isEmpty()) {
                 item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "No playlists yet",
-                            color = WearsicTextPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            textAlign = TextAlign.Center
-                        )
-                        Text(
-                            text = "Long-press a playlist to remove it from your server.",
-                            color = WearsicTextMuted,
-                            fontSize = 10.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                        )
-                    }
+                    WearsicEmptyState(
+                        title = "No playlists yet",
+                        message = "Long-press a playlist to remove it from your server.",
+                        icon = Icons.AutoMirrored.Rounded.QueueMusic
+                    )
                 }
             }
 

@@ -9,18 +9,13 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface RecentTrackDao {
 
-    @Query("SELECT * FROM recent_tracks ORDER BY playedAt DESC LIMIT 10")
+    // rowid DESC breaks same-millisecond playedAt ties: a REPLACE re-inserts
+    // the row with a fresh rowid, so the most recent replay always sorts first.
+    @Query("SELECT * FROM recent_tracks ORDER BY playedAt DESC, rowid DESC LIMIT 10")
     fun getRecentTracksFlow(): Flow<List<WearsicRecentTrackEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: WearsicRecentTrackEntity)
-
-    /** Same song recorded under a different id (surrogate vs YouTube id). */
-    @Query(
-        "DELETE FROM recent_tracks WHERE trackId != :trackId " +
-            "AND LOWER(title) = LOWER(:title) AND LOWER(artist) = LOWER(:artist)"
-    )
-    suspend fun deleteDuplicatesOf(trackId: String, title: String, artist: String)
 
     @Query("DELETE FROM recent_tracks WHERE trackId = :trackId")
     suspend fun deleteByTrackId(trackId: String)

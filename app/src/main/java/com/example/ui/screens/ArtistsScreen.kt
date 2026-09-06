@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
@@ -29,7 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,20 +39,22 @@ import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
-import androidx.wear.tooling.preview.devices.WearDevices
 import androidx.compose.ui.tooling.preview.Preview
-import com.example.ui.viewmodel.ArtistGroup
+import androidx.wear.tooling.preview.devices.WearDevices
+import com.example.ui.components.WearsicEmptyState
+import com.example.ui.components.WearsicLibraryTrackRow
+import com.example.ui.components.WearsicLoadingState
 import com.example.ui.components.WearsicScreenHeader
 import com.example.ui.theme.WearsicBlack
 import com.example.ui.theme.WearsicGlassBorder
 import com.example.ui.theme.WearsicGlassFill
-import com.example.ui.theme.WearsicTextMuted
 import com.example.ui.theme.WearsicTextPrimary
 import com.example.ui.theme.WearsicTextSecondary
 import com.example.ui.theme.WearsicTheme
-import com.example.ui.viewmodel.ArtistsUiState
-
+import com.example.ui.theme.WearsicVibrantLavender
 import com.example.ui.util.wearsicRotaryScroll
+import com.example.ui.viewmodel.ArtistGroup
+import com.example.ui.viewmodel.ArtistsUiState
 
 @Composable
 fun ArtistsScreen(
@@ -62,7 +64,7 @@ fun ArtistsScreen(
     modifier: Modifier = Modifier
 ) {
     val listState = rememberScalingLazyListState()
-    var selected by remember { mutableStateOf<com.example.ui.viewmodel.ArtistGroup?>(null) }
+    var selected by remember { mutableStateOf<ArtistGroup?>(null) }
 
     LaunchedEffect(Unit) { onRefresh() }
 
@@ -85,15 +87,19 @@ fun ArtistsScreen(
                 if (selected == null) {
                     WearsicScreenHeader(title = "Artists", subtitle = "From your saved songs")
                 } else {
-                    WearsicScreenHeader(title = selected!!.name, subtitle = "${selected!!.songs.size} songs • tap Clear to go back")
-                    // Clear button — exits the artist back to the full list
+                    WearsicScreenHeader(
+                        title = selected!!.name,
+                        subtitle = "${selected!!.songs.size} songs • tap Clear to go back"
+                    )
+                    // Clear button — exits the artist detail back to the full list
                     Row(
                         modifier = Modifier
                             .clip(CircleShape)
                             .background(WearsicGlassFill)
                             .border(1.dp, WearsicGlassBorder, CircleShape)
                             .clickable { selected = null }
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                            .testTag("artist_clear"),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
@@ -110,7 +116,7 @@ fun ArtistsScreen(
 
             if (artistsState.isLoading && artistsState.artists.isEmpty()) {
                 item {
-                    Text("Loading…", color = WearsicTextSecondary, fontSize = 11.sp)
+                    WearsicLoadingState(label = "Loading artists…")
                 }
             }
 
@@ -118,35 +124,19 @@ fun ArtistsScreen(
             if (group != null) {
                 items(group.songs.size) { index ->
                     val song = group.songs[index]
-                    com.example.ui.components.WearsicLibraryTrackRow(
+                    WearsicLibraryTrackRow(
                         track = song,
                         onPlay = { onPlayArtistSongs(group, index) }
                     )
                 }
             } else if (artistsState.artists.isEmpty() && !artistsState.isLoading) {
                 item {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Rounded.Person,
-                            contentDescription = null,
-                            tint = WearsicVibrantLavenderFallback,
-                            modifier = Modifier.size(30.dp)
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            "No artists yet",
-                            color = WearsicTextPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            "Save favorites or download songs to see artists here.",
-                            color = WearsicTextMuted,
-                            fontSize = 10.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 14.dp)
-                        )
-                    }
+                    WearsicEmptyState(
+                        title = "No artists yet",
+                        message = "Save favorites or download songs to see artists here.",
+                        icon = Icons.Rounded.Person,
+                        iconContentDescription = null
+                    )
                 }
             } else {
                 items(artistsState.artists, key = { it.name }) { artist ->
@@ -168,17 +158,17 @@ fun ArtistsScreen(
                                 modifier = Modifier
                                     .size(40.dp)
                                     .clip(CircleShape)
-                                    .background(WearsicVibrantLavenderFallback.copy(alpha = 0.25f)),
+                                    .background(WearsicVibrantLavender.copy(alpha = 0.25f)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.Person,
                                     contentDescription = null,
-                                    tint = WearsicVibrantLavenderFallback,
+                                    tint = WearsicVibrantLavender,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = artist.name,
@@ -203,8 +193,6 @@ fun ArtistsScreen(
         }
     }
 }
-
-private val WearsicVibrantLavenderFallback = androidx.compose.ui.graphics.Color(0xFFD0BCFF)
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
