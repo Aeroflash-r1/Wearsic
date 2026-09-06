@@ -34,7 +34,6 @@ import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.HourglassEmpty
 import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
@@ -89,22 +88,7 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 
-/**
- * NOW PLAYING — Wear OS 6 media controls, matched to the reference watch.
- *
- * Solid pale control pills with black glyphs over the blurred album artwork:
- *
- *     9:30 (live clock)
- *     ◉ logo  Song name
- *             Artist name
- *
- *     (◀)   ~ wavy progress blob ~   (▶)
- *
- *     [ 🎧⇉ output ]        [ ⋮ ]
- *
- * Wearsic's violet survives only where the reference lets colour speak: the
- * white logo chip glyph and the progress sweep around the wavy blob.
- */
+/** Wear OS now-playing screen with blurred artwork backdrop and centered transport controls. */
 @Composable
 fun PlayerScreen(
     playbackState: PlaybackUiState,
@@ -135,7 +119,7 @@ fun PlayerScreen(
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val safeHorizontal = (maxWidth * 0.12f).coerceIn(14.dp, 22.dp)
-            val safeTop = (maxHeight * 0.11f).coerceIn(16.dp, 24.dp)
+            val safeTop = (maxHeight * 0.16f).coerceIn(24.dp, 34.dp)
             val safeBottom = (maxHeight * 0.12f).coerceIn(16.dp, 26.dp)
             // ── Backdrop: real album artwork, blurred full-bleed ───────────
             Crossfade(
@@ -237,6 +221,7 @@ fun PlayerScreen(
                         testTag = "player_more_button"
                     )
                 }
+                Spacer(modifier = Modifier.height(6.dp))
 
                 // 2. Metadata + transport (centred middle block)
                 Column(
@@ -246,22 +231,6 @@ fun PlayerScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .background(WearsicLavenderContainer.copy(alpha = 0.72f))
-                            .border(1.dp, WearsicVibrantLavender.copy(alpha = 0.5f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.MusicNote,
-                            contentDescription = null,
-                            tint = WearsicVibrantLavender,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = if (hasTrack) track.title else "No Active Track",
                         color = Color.White,
@@ -270,7 +239,7 @@ fun PlayerScreen(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(0.9f)
+                        modifier = Modifier.fillMaxWidth(0.82f)
                     )
                     Text(
                         text = if (hasTrack) track.artist else "Play from Library to begin",
@@ -280,7 +249,7 @@ fun PlayerScreen(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(0.85f)
+                        modifier = Modifier.fillMaxWidth(0.8f)
                     )
 
                     Spacer(modifier = Modifier.height(14.dp))
@@ -289,7 +258,7 @@ fun PlayerScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        PaleRoundButton(
+                        SecondaryTransportButton(
                             icon = Icons.Rounded.SkipPrevious,
                             contentDescription = "Previous Track (tap twice)",
                             onClick = onSkipPrevious,
@@ -308,7 +277,7 @@ fun PlayerScreen(
                             onTogglePlayPause = onTogglePlayPause
                         )
                         Spacer(modifier = Modifier.width(10.dp))
-                        PaleRoundButton(
+                        SecondaryTransportButton(
                             icon = Icons.Rounded.SkipNext,
                             contentDescription = "Next Track",
                             onClick = onSkipNext,
@@ -320,7 +289,7 @@ fun PlayerScreen(
                 // 3. Bottom output capsule.
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth(0.84f),
+                        .fillMaxWidth(0.8f),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
@@ -398,10 +367,7 @@ fun PlayerScreen(
     }
 }
 
-/**
- * The scalloped "wavy" play/pause blob — solid pale like the reference, with
- * a black glyph and a thin outline whose sweep doubles as the progress ring.
- */
+/** Primary play/pause control with integrated progress stroke. */
 @Composable
 private fun WavyPlayBlob(
     isPlaying: Boolean,
@@ -500,7 +466,7 @@ private fun WavyPlayBlob(
 
 /** Secondary round transport button. */
 @Composable
-private fun PaleRoundButton(
+private fun SecondaryTransportButton(
     icon: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
